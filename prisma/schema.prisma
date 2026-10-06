@@ -1,0 +1,163 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Plan {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  maxSites    Int       @default(1)
+  companies   Company[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Company {
+  id          String        @id @default(cuid())
+  name        String
+  document    String?
+  status      String        @default("ACTIVE") // ACTIVE, SUSPENDED, CANCELLED
+  notes       String?
+  planId      String?
+  plan        Plan?         @relation(fields: [planId], references: [id], onDelete: SetNull)
+  sites       CompanySite[]
+  users       User[]
+  tickets     Ticket[]
+  invitations Invitation[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+}
+
+model CompanySite {
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name        String
+  domainUrl   String
+  isPrimary   Boolean   @default(false)
+  tickets     Ticket[]
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model User {
+  id                  String          @id @default(cuid())
+  name                String
+  email               String          @unique
+  passwordHash        String
+  role                String          @default("CLIENT") // ADMIN, EQUIPE, CLIENT
+  companyId           String?
+  company             Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  avatarUrl           String?
+  isActive            Boolean         @default(true)
+  failedLoginAttempts Int             @default(0)
+  lastLoginAt         DateTime?
+  createdTickets      Ticket[]        @relation("TicketCreator")
+  assignedTickets     Ticket[]        @relation("TicketAssignee")
+  comments            TicketComment[]
+  historyActions      TicketHistory[]
+  timeLogs            TimeLog[]
+  attachments         Attachment[]
+  sentInvitations     Invitation[]    @relation("InvitedByUser")
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+}
+
+model Invitation {
+  id          String    @id @default(cuid())
+  email       String
+  role        String    @default("CLIENT") // ADMIN, EQUIPE, CLIENT
+  token       String    @unique
+  companyId   String?
+  company     Company?  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdById String?
+  createdBy   User?     @relation("InvitedByUser", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+}
+
+model Ticket {
+  id             String          @id @default(cuid())
+  ticketNumber   Int             @unique
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  siteId         String
+  site           CompanySite     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  createdById    String
+  createdBy      User            @relation("TicketCreator", fields: [createdById], references: [id])
+  assignedToId   String?
+  assignedTo     User?           @relation("TicketAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  title          String
+  targetUrl      String?
+  changeType     String // TEXTO, IMAGEM, LAYOUT, NOVA_SECAO, CORRECAO_ERRO, SEO, OUTRO
+  urgency        String          @default("NORMAL") // BAIXA, NORMAL, ALTA
+  status         String          @default("NOVO") // NOVO, EM_ANALISE, AGUARDANDO_CLIENTE, EM_EXECUCAO, EM_REVISAO, CONCLUIDO, CANCELADO
+  description    String
+  referenceLinks String?
+  deadline       DateTime?
+  completedAt    DateTime?
+  comments       TicketComment[]
+  attachments    Attachment[]
+  history        TicketHistory[]
+  timeLogs       TimeLog[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}
+
+model TicketComment {
+  id          String       @id @default(cuid())
+  ticketId    String
+  ticket      Ticket       @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User         @relation(fields: [authorId], references: [id])
+  content     String
+  isInternal  Boolean      @default(false) // TRUE = Internal note (NOT visible to client)
+  attachments Attachment[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Attachment {
+  id           String         @id @default(cuid())
+  ticketId     String?
+  ticket       Ticket?        @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  commentId    String?
+  comment      TicketComment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  fileName     String
+  storedName   String
+  fileType     String
+  fileSize     Int
+  uploadedById String
+  uploadedBy   User           @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime       @default(now())
+}
+
+model TicketHistory {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  action    String // STATUS_CHANGE, ASSIGNED, DEADLINE_UPDATED, URGENCY_UPDATED, APPROVAL, REVISION_REQUEST
+  oldValue  String?
+  newValue  String?
+  notes     String?
+  createdAt DateTime @default(now())
+}
+
+model TimeLog {
+  id           String   @id @default(cuid())
+  ticketId     String
+  ticket       Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  minutesSpent Int
+  description  String?
+  createdAt    DateTime @default(now())
+}
