@@ -42,7 +42,7 @@ async function main() {
 
     console.log("\n2. Tentando disparar e-mail de teste...");
     const info = await transporter.sendMail({
-      from: "VMASYS <onboarding@resend.dev>",
+      from: process.env.SMTP_FROM || "VMASYS <suporte@vmasys.com>",
       to: "studiovmasys@gmail.com",
       subject: "VMASYS • Teste de Conexão SMTP Bem-Sucedido!",
       text: "Olá! O envio de e-mails via Resend SMTP foi configurado e testado com sucesso no VMASYS HelpDesk.",
