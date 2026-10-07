@@ -36,6 +36,7 @@ export async function saveBriefingAction(formData: FormData) {
   const requiredPages = formData.get("requiredPages")?.toString().trim() || null;
   const features = formData.get("features")?.toString().trim() || null;
   const contentDriveUrl = formData.get("contentDriveUrl")?.toString().trim() || null;
+  const customAnswers = formData.get("customAnswers")?.toString().trim() || null;
 
   const isSubmit = actionType === "SUBMIT";
 
@@ -64,6 +65,7 @@ export async function saveBriefingAction(formData: FormData) {
         requiredPages,
         features,
         contentDriveUrl,
+        customAnswers,
         status: newStatus,
         submittedAt,
       },
@@ -76,6 +78,7 @@ export async function saveBriefingAction(formData: FormData) {
         requiredPages,
         features,
         contentDriveUrl,
+        customAnswers,
         status: newStatus,
         submittedAt,
       },

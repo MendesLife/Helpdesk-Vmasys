@@ -6,6 +6,7 @@ import {
   updatePlanAction,
   deletePlanAction,
   togglePlanStatusAction,
+  savePlanBriefingQuestionsAction,
 } from "@/app/actions/plans";
 import { useRouter } from "next/navigation";
 import {
@@ -23,7 +24,20 @@ import {
   Building2,
   AlertTriangle,
   Layers,
+  ListChecks,
+  Plus,
+  Sparkles,
+  HelpCircle,
 } from "lucide-react";
+
+export interface BriefingQuestion {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "boolean";
+  placeholder?: string;
+  options?: string[];
+  required?: boolean;
+}
 
 interface PlanItem {
   id: string;
@@ -35,6 +49,7 @@ interface PlanItem {
   maxPages: number | null;
   slaHours: number | null;
   features: string | null;
+  briefingQuestions?: string | null;
   isActive: boolean;
   companies: { id: string; name: string; status: string }[];
 }
@@ -79,12 +94,131 @@ export default function PlansManagementAdmin({
   const [deletingPlan, setDeletingPlan] = useState<PlanItem | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  // Modal Perguntas de Briefing
+  const [questionsModalPlan, setQuestionsModalPlan] = useState<PlanItem | null>(null);
+  const [currentQuestions, setCurrentQuestions] = useState<BriefingQuestion[]>([]);
+  const [questionsError, setQuestionsError] = useState<string | null>(null);
+
   // Feedback Toast
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const parseQuestions = (raw?: string | null): BriefingQuestion[] => {
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const handleOpenQuestionsModal = (p: PlanItem) => {
+    setQuestionsModalPlan(p);
+    setCurrentQuestions(parseQuestions(p.briefingQuestions));
+    setQuestionsError(null);
+  };
+
+  const handleAddQuestion = () => {
+    const newQ: BriefingQuestion = {
+      id: `q_${Date.now()}`,
+      label: "",
+      type: "text",
+      placeholder: "",
+      required: false,
+      options: [],
+    };
+    setCurrentQuestions((prev) => [...prev, newQ]);
+  };
+
+  const handleRemoveQuestion = (index: number) => {
+    setCurrentQuestions((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleUpdateQuestion = (
+    index: number,
+    patch: Partial<BriefingQuestion>
+  ) => {
+    setCurrentQuestions((prev) => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], ...patch };
+      return updated;
+    });
+  };
+
+  const handleLoadTemplate = () => {
+    const template: BriefingQuestion[] = [
+      {
+        id: `q_obj_${Date.now()}`,
+        label: "Qual o objetivo principal do novo site?",
+        type: "select",
+        options: [
+          "Geração de Leads e Contatos no WhatsApp",
+          "Apresentação Institucional da Empresa",
+          "Catálogo de Produtos / Serviços",
+          "Autoridade e Fortalecimento de Marca",
+        ],
+        required: true,
+      },
+      {
+        id: `q_dom_${Date.now()}`,
+        label: "Já possui um domínio registrado? Se sim, qual?",
+        type: "text",
+        placeholder: "Ex: www.minhaempresa.com.br",
+        required: false,
+      },
+      {
+        id: `q_diff_${Date.now()}`,
+        label: "Quais os principais diferenciais da empresa frente à concorrência?",
+        type: "textarea",
+        placeholder: "Ex: Atendimento 24h, equipe especializada, 15 anos no mercado...",
+        required: false,
+      },
+      {
+        id: `q_call_${Date.now()}`,
+        label: "Qual a principal chamada para ação (Call to Action) desejada?",
+        type: "text",
+        placeholder: "Ex: Fale Conosco pelo WhatsApp, Solicite um Orçamento Online",
+        required: true,
+      },
+      {
+        id: `q_lgpd_${Date.now()}`,
+        label: "Necessita de banner de cookies e termos de privacidade LGPD?",
+        type: "boolean",
+        required: false,
+      },
+    ];
+    setCurrentQuestions(template);
+  };
+
+  const handleSaveQuestions = () => {
+    if (!questionsModalPlan) return;
+    setQuestionsError(null);
+
+    for (let i = 0; i < currentQuestions.length; i++) {
+      if (!currentQuestions[i].label.trim()) {
+        setQuestionsError(`A pergunta #${i + 1} está com o enunciado vazio.`);
+        return;
+      }
+    }
+
+    startTransition(async () => {
+      const res = await savePlanBriefingQuestionsAction(
+        questionsModalPlan.id,
+        JSON.stringify(currentQuestions)
+      );
+      if (res?.error) {
+        setQuestionsError(res.error);
+      } else {
+        setQuestionsModalPlan(null);
+        showToast("Perguntas de briefing salvas com sucesso!");
+        router.refresh();
+      }
+    });
   };
 
   const handleCreate = (e: React.FormEvent) => {
@@ -375,8 +509,27 @@ export default function PlansManagementAdmin({
                   )}
                 </div>
 
+                {/* Botão de Configuração de Perguntas do Briefing */}
+                <div className="mt-4 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenQuestionsModal(plan)}
+                    className="w-full py-2 px-3 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/70 text-indigo-700 border border-indigo-200/70 text-xs font-semibold flex items-center justify-between transition-colors group shadow-2xs"
+                  >
+                    <span className="flex items-center space-x-1.5">
+                      <ListChecks className="w-4 h-4 text-indigo-600 group-hover:scale-110 transition-transform" />
+                      <span>Perguntas do Briefing</span>
+                    </span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-white text-indigo-900 border border-indigo-200/60 font-bold shadow-2xs">
+                      {parseQuestions(plan.briefingQuestions).length > 0
+                        ? `${parseQuestions(plan.briefingQuestions).length} personalizada${parseQuestions(plan.briefingQuestions).length > 1 ? "s" : ""}`
+                        : "Padrão (0)"}
+                    </span>
+                  </button>
+                </div>
+
                 {/* Footer do Card */}
-                <div className="mt-6 pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div className="flex items-center space-x-1.5 text-slate-500">
                     <Building2 className="w-3.5 h-3.5 text-slate-400" />
                     <span>
@@ -797,6 +950,248 @@ export default function PlansManagementAdmin({
           </div>
         </div>
       )}
+
+      {/* Modal Configurar Perguntas de Briefing */}
+      {questionsModalPlan && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-2xl w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
+              <div className="flex items-center space-x-2">
+                <div className="p-2 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-600">
+                  <ListChecks className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                    <span>Perguntas de Briefing</span>
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-800">
+                      {questionsModalPlan.name}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Perguntas específicas que o cliente responderá ao preencher o briefing deste plano.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuestionsModalPlan(null)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Error */}
+            {questionsError && (
+              <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs shrink-0 flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                <span>{questionsError}</span>
+              </div>
+            )}
+
+            {/* Toolbar */}
+            <div className="flex flex-wrap items-center justify-between gap-2 shrink-0 bg-slate-50 p-3 rounded-xl border border-slate-200/70">
+              <span className="text-xs text-slate-600 font-medium">
+                {currentQuestions.length} pergunta{currentQuestions.length !== 1 ? "s" : ""} configurada{currentQuestions.length !== 1 ? "s" : ""}
+              </span>
+
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleLoadTemplate}
+                  className="inline-flex items-center px-2.5 py-1.5 rounded-lg border border-slate-300 hover:bg-white text-slate-700 font-semibold text-xs transition-colors shadow-2xs"
+                  title="Carregar um conjunto de perguntas comuns recomendadas"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                  <span>Carregar Sugestões</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleAddQuestion}
+                  className="inline-flex items-center px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs transition-colors shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5 mr-1" />
+                  <span>+ Nova Pergunta</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Questions List */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
+              {currentQuestions.length === 0 ? (
+                <div className="p-8 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-slate-500 space-y-2">
+                  <HelpCircle className="w-8 h-8 text-slate-300 mx-auto" />
+                  <p className="font-semibold text-slate-700">
+                    Nenhuma pergunta personalizada ainda
+                  </p>
+                  <p className="text-[11px] text-slate-400 max-w-md mx-auto">
+                    Os clientes deste pacote responderão apenas às perguntas padrão da VMASYS (objetivo, referências, cores, páginas, arquivos). Clique em <strong>+ Nova Pergunta</strong> ou <strong>Carregar Sugestões</strong> para adicionar perguntas sob medida.
+                  </p>
+                </div>
+              ) : (
+                currentQuestions.map((q, idx) => (
+                  <div
+                    key={q.id || idx}
+                    className="p-4 rounded-xl border border-slate-200 bg-white shadow-2xs space-y-3 relative group"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-2">
+                        <span className="w-5 h-5 rounded-full bg-indigo-50 text-indigo-700 font-bold text-[10px] flex items-center justify-center border border-indigo-100">
+                          {idx + 1}
+                        </span>
+                        <span className="font-bold text-slate-800 text-xs">
+                          Pergunta #{idx + 1}
+                        </span>
+                        {q.required && (
+                          <span className="text-[10px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
+                            Obrigatória
+                          </span>
+                        )}
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveQuestion(idx)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                        title="Remover pergunta"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-slate-700 mb-1">
+                        Enunciado da Pergunta *
+                      </label>
+                      <input
+                        type="text"
+                        value={q.label}
+                        onChange={(e) =>
+                          handleUpdateQuestion(idx, { label: e.target.value })
+                        }
+                        placeholder="Ex: Qual o principal produto ou serviço que você deseja destacar?"
+                        className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Tipo de Resposta
+                        </label>
+                        <select
+                          value={q.type}
+                          onChange={(e) =>
+                            handleUpdateQuestion(idx, {
+                              type: e.target.value as any,
+                            })
+                          }
+                          className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                        >
+                          <option value="text">Texto Curto</option>
+                          <option value="textarea">Texto Longo (Parágrafo)</option>
+                          <option value="select">Múltipla Escolha (Seleção)</option>
+                          <option value="boolean">Sim / Não (Checkbox)</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center space-x-2 pt-5">
+                        <input
+                          type="checkbox"
+                          id={`req_${idx}`}
+                          checked={q.required || false}
+                          onChange={(e) =>
+                            handleUpdateQuestion(idx, {
+                              required: e.target.checked,
+                            })
+                          }
+                          className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        <label
+                          htmlFor={`req_${idx}`}
+                          className="font-semibold text-slate-700 cursor-pointer"
+                        >
+                          Resposta obrigatória para envio
+                        </label>
+                      </div>
+                    </div>
+
+                    {q.type === "select" && (
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Opções de Escolha (separadas por vírgula)
+                        </label>
+                        <input
+                          type="text"
+                          value={q.options ? q.options.join(", ") : ""}
+                          onChange={(e) =>
+                            handleUpdateQuestion(idx, {
+                              options: e.target.value
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter(Boolean),
+                            })
+                          }
+                          placeholder="Opção 1, Opção 2, Opção 3"
+                          className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+                    )}
+
+                    {q.type !== "boolean" && q.type !== "select" && (
+                      <div>
+                        <label className="block font-semibold text-slate-700 mb-1">
+                          Dica / Placeholder (Opcional)
+                        </label>
+                        <input
+                          type="text"
+                          value={q.placeholder || ""}
+                          onChange={(e) =>
+                            handleUpdateQuestion(idx, {
+                              placeholder: e.target.value,
+                            })
+                          }
+                          placeholder="Ex: Digite aqui um resumo de até 2 linhas..."
+                          className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600"
+                        />
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="flex justify-between items-center pt-3 border-t border-slate-100 shrink-0">
+              <span className="text-[11px] text-slate-400">
+                Alterações afetarão briefings pendentes deste plano.
+              </span>
+
+              <div className="flex space-x-2">
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setQuestionsModalPlan(null)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={handleSaveQuestions}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                >
+                  {isPending ? "Salvando..." : "Salvar Perguntas do Plano"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+

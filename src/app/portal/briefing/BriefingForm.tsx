@@ -22,12 +22,22 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 
+interface CustomQuestion {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "select" | "boolean";
+  placeholder?: string;
+  options?: string[];
+  required?: boolean;
+}
+
 interface Props {
   companyId: string;
   companyName: string;
   planName: string;
   briefing: any | null;
   onboardingStage: string | null;
+  planBriefingQuestions?: string | null;
 }
 
 export default function BriefingForm({
@@ -36,6 +46,7 @@ export default function BriefingForm({
   planName,
   briefing,
   onboardingStage,
+  planBriefingQuestions,
 }: Props) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -56,6 +67,31 @@ export default function BriefingForm({
     briefing?.contentDriveUrl || ""
   );
 
+  // Perguntas customizadas do pacote
+  const parsedCustomQuestions: CustomQuestion[] = (() => {
+    if (!planBriefingQuestions) return [];
+    try {
+      const list = JSON.parse(planBriefingQuestions);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const initialCustomAnswers: Record<string, string> = (() => {
+    if (!briefing?.customAnswers) return {};
+    try {
+      const parsed = JSON.parse(briefing.customAnswers);
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  })();
+
+  const [customAnswers, setCustomAnswers] = useState<Record<string, string>>(
+    initialCustomAnswers
+  );
+
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -68,6 +104,18 @@ export default function BriefingForm({
   const handleSubmit = (actionType: "SAVE_DRAFT" | "SUBMIT") => {
     setFeedback(null);
 
+    if (actionType === "SUBMIT") {
+      for (const q of parsedCustomQuestions) {
+        if (q.required && (!customAnswers[q.id] || !customAnswers[q.id].trim())) {
+          setFeedback({
+            type: "error",
+            message: `Por favor, responda à pergunta obrigatória do pacote: "${q.label}".`,
+          });
+          return;
+        }
+      }
+    }
+
     const formData = new FormData();
     formData.append("companyId", companyId);
     formData.append("actionType", actionType);
@@ -78,6 +126,7 @@ export default function BriefingForm({
     formData.append("requiredPages", requiredPages);
     formData.append("features", features);
     formData.append("contentDriveUrl", contentDriveUrl);
+    formData.append("customAnswers", JSON.stringify(customAnswers));
 
     startTransition(async () => {
       const res = await saveBriefingAction(formData);
@@ -397,6 +446,117 @@ export default function BriefingForm({
             </div>
           </div>
         </div>
+
+        {/* Bloco 5: Perguntas Específicas do Pacote */}
+        {parsedCustomQuestions.length > 0 && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/90 shadow-xs space-y-4">
+            <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
+              <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-900">
+                  5. Perguntas Específicas do Pacote ({planName})
+                </h2>
+                <p className="text-[11px] text-slate-500">
+                  Responda às questões configuradas especificamente para o escopo do seu plano.
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              {parsedCustomQuestions.map((q, idx) => (
+                <div
+                  key={q.id || idx}
+                  className="space-y-1.5 p-3.5 rounded-xl bg-slate-50/70 border border-slate-200/60"
+                >
+                  <div className="flex items-center justify-between">
+                    <label className="block font-bold text-slate-800">
+                      {idx + 1}. {q.label}{" "}
+                      {q.required && <span className="text-rose-500">*</span>}
+                    </label>
+                    {q.required && (
+                      <span className="text-[10px] font-semibold text-rose-600 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
+                        Obrigatória
+                      </span>
+                    )}
+                  </div>
+
+                  {q.type === "textarea" ? (
+                    <textarea
+                      rows={3}
+                      disabled={isApproved}
+                      value={customAnswers[q.id] || ""}
+                      onChange={(e) =>
+                        setCustomAnswers((prev) => ({
+                          ...prev,
+                          [q.id]: e.target.value,
+                        }))
+                      }
+                      placeholder={q.placeholder || "Digite sua resposta..."}
+                      className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-sky-500 disabled:bg-slate-100/80 leading-relaxed bg-white"
+                    />
+                  ) : q.type === "select" ? (
+                    <select
+                      disabled={isApproved}
+                      value={customAnswers[q.id] || ""}
+                      onChange={(e) =>
+                        setCustomAnswers((prev) => ({
+                          ...prev,
+                          [q.id]: e.target.value,
+                        }))
+                      }
+                      className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-sky-500 disabled:bg-slate-100/80 bg-white"
+                    >
+                      <option value="">Selecione uma opção...</option>
+                      {(q.options || []).map((opt, oIdx) => (
+                        <option key={oIdx} value={opt}>
+                          {opt}
+                        </option>
+                      ))}
+                    </select>
+                  ) : q.type === "boolean" ? (
+                    <div className="flex items-center space-x-2 pt-1">
+                      <input
+                        type="checkbox"
+                        id={`q_bool_${q.id}`}
+                        disabled={isApproved}
+                        checked={customAnswers[q.id] === "Sim"}
+                        onChange={(e) =>
+                          setCustomAnswers((prev) => ({
+                            ...prev,
+                            [q.id]: e.target.checked ? "Sim" : "Não",
+                          }))
+                        }
+                        className="rounded border-slate-300 text-sky-600 focus:ring-sky-500 w-4 h-4 cursor-pointer"
+                      />
+                      <label
+                        htmlFor={`q_bool_${q.id}`}
+                        className="text-slate-700 font-semibold cursor-pointer"
+                      >
+                        Sim, confirmo / desejo este item
+                      </label>
+                    </div>
+                  ) : (
+                    <input
+                      type="text"
+                      disabled={isApproved}
+                      value={customAnswers[q.id] || ""}
+                      onChange={(e) =>
+                        setCustomAnswers((prev) => ({
+                          ...prev,
+                          [q.id]: e.target.value,
+                        }))
+                      }
+                      placeholder={q.placeholder || "Digite sua resposta..."}
+                      className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-sky-500 disabled:bg-slate-100/80 bg-white"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Barra de Ações do Formulário */}
         {!isApproved && (

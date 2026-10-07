@@ -7,6 +7,7 @@ import {
   updateCompanyAction,
   deleteCompanyAction,
 } from "@/app/actions/admin";
+import { updateOnboardingStageAction } from "@/app/actions/briefing";
 import { useRouter } from "next/navigation";
 import {
   Building2,
@@ -25,6 +26,10 @@ import {
   CreditCard,
   DollarSign,
   Package,
+  LayoutGrid,
+  Kanban,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 
 interface CompanyItem {
@@ -46,6 +51,39 @@ interface CompanyItem {
   tickets: { id: string; status: string }[];
 }
 
+const ONBOARDING_STAGES = [
+  {
+    id: "BRIEFING_PENDENTE",
+    label: "Briefing Pendente",
+    headerBg: "bg-amber-500",
+    description: "Aguardando envio do briefing pelo cliente",
+  },
+  {
+    id: "BRIEFING_EM_ANALISE",
+    label: "Briefing em Análise",
+    headerBg: "bg-purple-500",
+    description: "Briefing submetido para avaliação da equipe",
+  },
+  {
+    id: "EM_DESENVOLVIMENTO",
+    label: "Em Criação / Design",
+    headerBg: "bg-sky-500",
+    description: "Equipe trabalhando no desenvolvimento do site",
+  },
+  {
+    id: "EM_HOMOLOGACAO",
+    label: "Em Homologação",
+    headerBg: "bg-teal-500",
+    description: "Site em link temporário para testes do cliente",
+  },
+  {
+    id: "ATIVO_MANUTENCAO",
+    label: "No Ar / Ativo",
+    headerBg: "bg-emerald-500",
+    description: "Site publicado e sob manutenção mensal",
+  },
+];
+
 export default function ClientsListAdmin({
   companies,
   plans,
@@ -56,8 +94,61 @@ export default function ClientsListAdmin({
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
   const [stageFilter, setStageFilter] = useState<string>("ALL");
+  const [viewMode, setViewMode] = useState<"cards" | "kanban">("cards");
+  const [optimisticStages, setOptimisticStages] = useState<Record<string, string>>({});
+  const [draggedCompanyId, setDraggedCompanyId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<string | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
+
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  const getCompanyStage = (c: CompanyItem) =>
+    optimisticStages[c.id] || c.onboardingStage || "ATIVO_MANUTENCAO";
+
+  const handleMoveStage = (companyId: string, targetStage: string) => {
+    setOptimisticStages((prev) => ({ ...prev, [companyId]: targetStage }));
+
+    startTransition(async () => {
+      const res = await updateOnboardingStageAction(companyId, targetStage);
+      if (res?.error) {
+        alert(res.error);
+        router.refresh();
+      } else {
+        showToast("Etapa atualizada com sucesso!");
+        router.refresh();
+      }
+    });
+  };
+
+  const handleDragStart = (e: React.DragEvent, companyId: string) => {
+    e.dataTransfer.setData("text/plain", companyId);
+    setDraggedCompanyId(companyId);
+  };
+
+  const handleDragOver = (e: React.DragEvent, stageId: string) => {
+    e.preventDefault();
+    setDragOverStage(stageId);
+  };
+
+  const handleDragLeave = () => {
+    setDragOverStage(null);
+  };
+
+  const handleDrop = (e: React.DragEvent, targetStage: string) => {
+    e.preventDefault();
+    setDragOverStage(null);
+    const companyId = e.dataTransfer.getData("text/plain") || draggedCompanyId;
+    if (!companyId) return;
+
+    handleMoveStage(companyId, targetStage);
+    setDraggedCompanyId(null);
+  };
 
   // Form State - Criar
   const [name, setName] = useState("");
@@ -307,11 +398,19 @@ export default function ClientsListAdmin({
 
   const filteredCompanies = companies.filter((c) => {
     if (stageFilter === "ALL") return true;
-    return (c.onboardingStage || "ATIVO_MANUTENCAO") === stageFilter;
+    return getCompanyStage(c) === stageFilter;
   });
 
   return (
     <div className="space-y-6">
+      {/* Toast Feedback */}
+      {toast && (
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs flex items-center space-x-2 border border-slate-700 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+          <span>{toast}</span>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">
@@ -322,7 +421,35 @@ export default function ClientsListAdmin({
           </p>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Alternador de Modo de Visualização */}
+          <div className="bg-slate-100 p-1 rounded-xl flex items-center space-x-1 border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode("cards")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors ${
+                viewMode === "cards"
+                  ? "bg-white text-slate-900 shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Cards</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("kanban")}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center space-x-1.5 transition-colors ${
+                viewMode === "kanban"
+                  ? "bg-white text-slate-900 shadow-2xs"
+                  : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Kanban className="w-3.5 h-3.5" />
+              <span>Quadro Kanban</span>
+            </button>
+          </div>
+
           <Link
             href="/admin/planos"
             className="inline-flex items-center px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs shadow-xs transition-colors"
@@ -342,35 +469,214 @@ export default function ClientsListAdmin({
         </div>
       </div>
 
-      {/* Filtros por Etapa de Criação / Onboarding */}
+      {viewMode === "kanban" ? (
+        <div className="flex gap-4 overflow-x-auto pb-6 items-start scrollbar-thin">
+          {ONBOARDING_STAGES.map((col, colIdx) => {
+            const colCompanies = companies.filter(
+              (c) => getCompanyStage(c) === col.id
+            );
+            const isDragTarget = dragOverStage === col.id;
+
+            return (
+              <div
+                key={col.id}
+                onDragOver={(e) => handleDragOver(e, col.id)}
+                onDragLeave={handleDragLeave}
+                onDrop={(e) => handleDrop(e, col.id)}
+                className={`w-80 shrink-0 flex flex-col rounded-2xl border transition-all ${
+                  isDragTarget
+                    ? "border-indigo-500 bg-indigo-50/40 shadow-md ring-2 ring-indigo-400/40"
+                    : "border-slate-200/90 bg-slate-100/70"
+                }`}
+              >
+                {/* Cabeçalho da Coluna */}
+                <div className="p-3.5 border-b border-slate-200/70 bg-white/80 rounded-t-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span className={`w-2.5 h-2.5 rounded-full ${col.headerBg}`} />
+                      <h3 className="text-xs font-bold text-slate-900">
+                        {col.label}
+                      </h3>
+                    </div>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
+                      {colCompanies.length}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    {col.description}
+                  </p>
+                </div>
+
+                {/* Lista de Cards da Coluna */}
+                <div className="p-3 space-y-3 min-h-[460px]">
+                  {colCompanies.length === 0 ? (
+                    <div className="h-40 border-2 border-dashed border-slate-200/80 rounded-xl flex items-center justify-center p-4 text-center">
+                      <p className="text-[11px] text-slate-400 font-medium">
+                        Arraste uma empresa para cá
+                      </p>
+                    </div>
+                  ) : (
+                    colCompanies.map((c) => {
+                      const openTicketsCount = c.tickets.filter(
+                        (t) => t.status !== "CONCLUIDO" && t.status !== "CANCELADO"
+                      ).length;
+                      const primaryDomain = c.sites[0]?.domainUrl;
+                      const displayPrice =
+                        c.customPrice !== null && c.customPrice !== undefined
+                          ? formatCurrency(c.customPrice)
+                          : c.plan?.price !== undefined
+                          ? formatCurrency(c.plan.price)
+                          : null;
+
+                      return (
+                        <div
+                          key={c.id}
+                          draggable
+                          onDragStart={(e) => handleDragStart(e, c.id)}
+                          className="bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs hover:shadow-md transition-all space-y-2.5 cursor-grab active:cursor-grabbing select-none"
+                        >
+                          {/* Badges superiores */}
+                          <div className="flex items-center justify-between gap-1.5">
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-100/80 truncate max-w-[130px]">
+                              {c.plan?.name || "Sem Plano"}
+                            </span>
+                            <div className="flex items-center space-x-1 shrink-0">
+                              {getFinancialBadge(c.financialStatus)}
+                            </div>
+                          </div>
+
+                          {/* Título & Domínio */}
+                          <div>
+                            <Link
+                              href={`/admin/clientes/${c.id}`}
+                              className="font-bold text-slate-900 text-xs hover:text-indigo-600 transition-colors line-clamp-1 block"
+                            >
+                              {c.name}
+                            </Link>
+                            {primaryDomain ? (
+                              <p className="text-[10px] text-slate-400 flex items-center mt-0.5 truncate">
+                                <Globe className="w-3 h-3 mr-1 text-slate-400 shrink-0" />
+                                <span className="truncate">{primaryDomain}</span>
+                              </p>
+                            ) : (
+                              <p className="text-[10px] text-slate-400 flex items-center mt-0.5">
+                                <Globe className="w-3 h-3 mr-1 text-slate-300 shrink-0" />
+                                <span>Sem domínio vinculado</span>
+                              </p>
+                            )}
+                          </div>
+
+                          {/* Info bar: Mensalidade & Chamados */}
+                          <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+                            <span className="font-semibold text-slate-700">
+                              {displayPrice ? `${displayPrice}/mês` : "A combinar"}
+                            </span>
+                            <span className="flex items-center text-[10px] text-slate-400">
+                              <Ticket className="w-3 h-3 mr-1 text-indigo-500" />
+                              {openTicketsCount} aberto{openTicketsCount !== 1 ? "s" : ""}
+                            </span>
+                          </div>
+
+                          {/* Controles de Movimentação Rápida */}
+                          <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-1">
+                            {colIdx > 0 ? (
+                              <button
+                                type="button"
+                                disabled={isPending}
+                                onClick={() =>
+                                  handleMoveStage(
+                                    c.id,
+                                    ONBOARDING_STAGES[colIdx - 1].id
+                                  )
+                                }
+                                title={`Mover para ${ONBOARDING_STAGES[colIdx - 1].label}`}
+                                className="px-2 py-1 rounded-lg text-[10px] font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center space-x-1"
+                              >
+                                <ChevronLeft className="w-3 h-3" />
+                                <span>Voltar</span>
+                              </button>
+                            ) : (
+                              <span />
+                            )}
+
+                            <Link
+                              href={`/admin/clientes/${c.id}`}
+                              className="text-[10px] font-semibold text-indigo-600 hover:underline"
+                            >
+                              Ver detalhes
+                            </Link>
+
+                            {colIdx < ONBOARDING_STAGES.length - 1 ? (
+                              <button
+                                type="button"
+                                disabled={isPending}
+                                onClick={() =>
+                                  handleMoveStage(
+                                    c.id,
+                                    ONBOARDING_STAGES[colIdx + 1].id
+                                  )
+                                }
+                                title={`Avançar para ${ONBOARDING_STAGES[colIdx + 1].label}`}
+                                className="px-2 py-1 rounded-lg text-[10px] font-bold text-white bg-indigo-600 hover:bg-indigo-700 transition-colors flex items-center space-x-1 shadow-2xs"
+                              >
+                                <span>Avançar</span>
+                                <ChevronRight className="w-3 h-3" />
+                              </button>
+                            ) : (
+                              <span className="text-[10px] font-bold text-emerald-600 flex items-center">
+                                <CheckCircle2 className="w-3 h-3 mr-0.5" />
+                                Concluído
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          {/* Filtros por Etapa de Criação / Onboarding */}
       <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none text-xs">
         {[
           { id: "ALL", label: "Todas as Empresas", count: companies.length },
           {
             id: "BRIEFING_PENDENTE",
             label: "Aguardando Briefing",
-            count: companies.filter((c) => c.onboardingStage === "BRIEFING_PENDENTE").length,
+            count: companies.filter(
+              (c) => getCompanyStage(c) === "BRIEFING_PENDENTE"
+            ).length,
           },
           {
             id: "BRIEFING_EM_ANALISE",
             label: "Briefing em Análise",
-            count: companies.filter((c) => c.onboardingStage === "BRIEFING_EM_ANALISE").length,
+            count: companies.filter(
+              (c) => getCompanyStage(c) === "BRIEFING_EM_ANALISE"
+            ).length,
           },
           {
             id: "EM_DESENVOLVIMENTO",
             label: "Em Criação",
-            count: companies.filter((c) => c.onboardingStage === "EM_DESENVOLVIMENTO").length,
+            count: companies.filter(
+              (c) => getCompanyStage(c) === "EM_DESENVOLVIMENTO"
+            ).length,
           },
           {
             id: "EM_HOMOLOGACAO",
             label: "Em Homologação",
-            count: companies.filter((c) => c.onboardingStage === "EM_HOMOLOGACAO").length,
+            count: companies.filter(
+              (c) => getCompanyStage(c) === "EM_HOMOLOGACAO"
+            ).length,
           },
           {
             id: "ATIVO_MANUTENCAO",
             label: "No Ar / Ativo",
             count: companies.filter(
-              (c) => !c.onboardingStage || c.onboardingStage === "ATIVO_MANUTENCAO"
+              (c) => getCompanyStage(c) === "ATIVO_MANUTENCAO"
             ).length,
           },
         ].map((tab) => {
@@ -423,7 +729,7 @@ export default function ClientsListAdmin({
                     <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
                       {c.plan?.name || "Sem Plano"}
                     </span>
-                    {getOnboardingBadge(c.onboardingStage)}
+                    {getOnboardingBadge(getCompanyStage(c))}
                   </div>
 
                   <div className="flex items-center space-x-1.5 shrink-0">
@@ -549,6 +855,8 @@ export default function ClientsListAdmin({
           );
         })}
       </div>
+        </>
+      )}
 
       {/* Modal de Criação de Empresa */}
       {showModal && (

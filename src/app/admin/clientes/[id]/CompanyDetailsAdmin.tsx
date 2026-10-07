@@ -475,6 +475,26 @@ export default function CompanyDetailsAdmin({
       )
   );
 
+  const parsedCustomQuestions = (() => {
+    if (!company.plan?.briefingQuestions) return [];
+    try {
+      const list = JSON.parse(company.plan.briefingQuestions);
+      return Array.isArray(list) ? list : [];
+    } catch {
+      return [];
+    }
+  })();
+
+  const parsedCustomAnswers: Record<string, string> = (() => {
+    if (!company.briefing?.customAnswers) return {};
+    try {
+      const obj = JSON.parse(company.briefing.customAnswers);
+      return typeof obj === "object" && obj !== null ? obj : {};
+    } catch {
+      return {};
+    }
+  })();
+
   return (
     <div className="space-y-6">
       {/* Toast Feedback */}
@@ -837,6 +857,45 @@ export default function CompanyDetailsAdmin({
                     <ExternalLink className="w-3.5 h-3.5 mr-1" />
                     <span>Abrir Drive</span>
                   </a>
+                </div>
+              )}
+
+              {/* Perguntas Personalizadas do Pacote */}
+              {Object.keys(parsedCustomAnswers).length > 0 && (
+                <div className="p-4 rounded-xl bg-purple-50/70 border border-purple-200/80 md:col-span-2 space-y-3">
+                  <span className="font-bold text-purple-950 flex items-center text-xs">
+                    <Sparkles className="w-3.5 h-3.5 mr-1 text-purple-600" />
+                    Respostas do Pacote ({company.plan?.name || "Plano"})
+                  </span>
+                  <div className="space-y-2.5">
+                    {parsedCustomQuestions.length > 0 ? (
+                      parsedCustomQuestions.map((q: any, qIdx: number) => (
+                        <div
+                          key={q.id || qIdx}
+                          className="bg-white p-3 rounded-lg border border-purple-100 text-xs shadow-2xs"
+                        >
+                          <p className="font-bold text-slate-800">
+                            {qIdx + 1}. {q.label}
+                          </p>
+                          <p className="text-slate-700 mt-1 whitespace-pre-wrap font-medium">
+                            {parsedCustomAnswers[q.id] || "Não respondido"}
+                          </p>
+                        </div>
+                      ))
+                    ) : (
+                      Object.entries(parsedCustomAnswers).map(([key, val], idx) => (
+                        <div
+                          key={key}
+                          className="bg-white p-3 rounded-lg border border-purple-100 text-xs shadow-2xs"
+                        >
+                          <p className="font-bold text-slate-800">Item #{idx + 1}</p>
+                          <p className="text-slate-700 mt-1 whitespace-pre-wrap font-medium">
+                            {val}
+                          </p>
+                        </div>
+                      ))
+                    )}
+                  </div>
                 </div>
               )}
 

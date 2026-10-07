@@ -45,6 +45,7 @@ export default async function ClientBriefingPage() {
         planName={company.plan?.name || "Plano sob Medida"}
         briefing={company.briefing}
         onboardingStage={company.onboardingStage}
+        planBriefingQuestions={company.plan?.briefingQuestions || null}
       />
     </div>
   );

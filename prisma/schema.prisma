@@ -18,6 +18,7 @@ model Plan {
   slaHours              Int?      @default(48) // Prazo de SLA em horas úteis
   features              String?   // Lista de recursos inclusos (separados por linha)
   stripePriceId         String?   // ID do preço no Stripe
+  briefingQuestions     String?   // JSON com perguntas personalizadas de briefing para este pacote
   isActive              Boolean   @default(true)
   companies             Company[]
   createdAt             DateTime  @default(now())
@@ -213,6 +214,7 @@ model ProjectBriefing {
   requiredPages    String?   // Páginas desejadas (ex: Início, Sobre, Serviços, Contato)
   features         String?   // Recursos (Botão WhatsApp, formulário, mapa, blog, etc)
   contentDriveUrl  String?   // Link do Google Drive / Dropbox com fotos, logo e textos
+  customAnswers    String?   // JSON com respostas do cliente às perguntas personalizadas do pacote
   adminNotes       String?   // Feedback da equipe VMASYS (solicitação de ajustes ou anotações)
   submittedAt      DateTime?
   approvedAt       DateTime?

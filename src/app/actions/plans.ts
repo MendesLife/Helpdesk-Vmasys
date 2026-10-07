@@ -173,3 +173,48 @@ export async function togglePlanStatusAction(planId: string) {
     return { error: "Erro ao alterar status do plano." };
   }
 }
+
+export async function savePlanBriefingQuestionsAction(
+  planId: string,
+  questionsJson: string
+) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return {
+      error: "Apenas o Administrador Geral pode configurar perguntas de briefing dos planos.",
+    };
+  }
+
+  if (!planId) {
+    return { error: "ID do plano não informado." };
+  }
+
+  try {
+    // Valida se o formato JSON é válido
+    if (questionsJson && questionsJson.trim()) {
+      JSON.parse(questionsJson);
+    }
+
+    await prisma.plan.update({
+      where: { id: planId },
+      data: {
+        briefingQuestions: questionsJson || null,
+      },
+    });
+
+    revalidatePath("/admin/planos");
+    revalidatePath("/portal/briefing");
+    revalidatePath("/admin/clientes");
+
+    return {
+      success: true,
+      message: "Perguntas de briefing do pacote atualizadas com sucesso!",
+    };
+  } catch (err: any) {
+    console.error("Erro ao salvar perguntas de briefing do plano:", err);
+    return {
+      error: "Erro ao salvar perguntas: formato inválido ou falha no banco de dados.",
+    };
+  }
+}
+
