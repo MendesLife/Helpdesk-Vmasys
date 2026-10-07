@@ -9,13 +9,18 @@ interface Props {
 export default async function CompanyDetailPage({ params }: Props) {
   const { id } = await params;
 
-  const [company, invitations, plans] = await Promise.all([
+  const [company, invitations, plans, allClientUsers] = await Promise.all([
     prisma.company.findUnique({
       where: { id },
       include: {
         plan: true,
         sites: { orderBy: { isPrimary: "desc" } },
         users: { orderBy: { createdAt: "asc" } },
+        memberships: {
+          include: {
+            user: true,
+          },
+        },
         tickets: {
           include: {
             site: true,
@@ -32,6 +37,11 @@ export default async function CompanyDetailPage({ params }: Props) {
     prisma.plan.findMany({
       orderBy: { maxSites: "asc" },
     }),
+    prisma.user.findMany({
+      where: { role: "CLIENT" },
+      select: { id: true, name: true, email: true },
+      orderBy: { name: "asc" },
+    }),
   ]);
 
   if (!company) notFound();
@@ -42,6 +52,7 @@ export default async function CompanyDetailPage({ params }: Props) {
         company={company as any}
         invitations={invitations as any}
         plans={plans as any}
+        allClientUsers={allClientUsers as any}
       />
     </div>
   );

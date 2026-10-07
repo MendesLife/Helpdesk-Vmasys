@@ -10,6 +10,8 @@ import {
   toggleUserStatusAction,
   removeUserAccessAction,
   deleteInvitationAction,
+  linkUserToCompanyAction,
+  unlinkUserFromCompanyAction,
 } from "@/app/actions/admin";
 import { useRouter } from "next/navigation";
 import {
@@ -31,6 +33,8 @@ import {
   Trash2,
   UserX,
   UserCheck,
+  UserPlus,
+  Unlink,
   AlertTriangle,
   X,
   Lock,
@@ -47,10 +51,12 @@ export default function CompanyDetailsAdmin({
   company,
   invitations,
   plans,
+  allClientUsers = [],
 }: {
   company: any;
   invitations: any[];
   plans?: { id: string; name: string; maxSites: number; price?: number }[];
+  allClientUsers?: { id: string; name: string; email: string }[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -95,6 +101,11 @@ export default function CompanyDetailsAdmin({
   // Delete Company State
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Link Existing User State
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [linkEmail, setLinkEmail] = useState("");
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   // Feedback State
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
@@ -230,6 +241,51 @@ export default function CompanyDetailsAdmin({
     });
   };
 
+  const handleLinkUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    setLinkError(null);
+
+    const formData = new FormData();
+    formData.append("companyId", company.id);
+    formData.append("email", linkEmail);
+
+    startTransition(async () => {
+      const res = await linkUserToCompanyAction(formData);
+      if (res?.error) {
+        setLinkError(res.error);
+      } else {
+        setShowLinkModal(false);
+        setLinkEmail("");
+        if (res?.message) {
+          setActionFeedback(res.message);
+          setTimeout(() => setActionFeedback(null), 3500);
+        }
+        router.refresh();
+      }
+    });
+  };
+
+  const handleUnlinkUser = (userId: string, userName: string) => {
+    if (
+      !confirm(
+        `Tem certeza que deseja desvincular o acesso de ${userName} a esta empresa? O usuário não perderá sua conta nem o acesso a outras empresas.`
+      )
+    ) {
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await unlinkUserFromCompanyAction(company.id, userId);
+      if (res?.message) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else if (res?.error) {
+        alert(res.error);
+      }
+    });
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
@@ -309,6 +365,61 @@ export default function CompanyDetailsAdmin({
     : company.plan?.price !== undefined
     ? formatCurrency(company.plan.price)
     : null;
+
+  // Combina usuários diretos e vinculados via CompanyMember
+  const combinedUsers = (() => {
+    const list: Array<{
+      id: string;
+      name: string;
+      email: string;
+      isActive: boolean;
+      isPrimary: boolean;
+      isMembership: boolean;
+    }> = [];
+
+    const seenIds = new Set<string>();
+
+    if (company.users) {
+      for (const u of company.users) {
+        if (!seenIds.has(u.id)) {
+          seenIds.add(u.id);
+          list.push({
+            id: u.id,
+            name: u.name,
+            email: u.email,
+            isActive: u.isActive !== false,
+            isPrimary: u.companyId === company.id,
+            isMembership: false,
+          });
+        }
+      }
+    }
+
+    if (company.memberships) {
+      for (const m of company.memberships) {
+        if (m.user && !seenIds.has(m.user.id)) {
+          seenIds.add(m.user.id);
+          list.push({
+            id: m.user.id,
+            name: m.user.name,
+            email: m.user.email,
+            isActive: m.user.isActive !== false,
+            isPrimary: m.user.companyId === company.id,
+            isMembership: true,
+          });
+        }
+      }
+    }
+
+    return list;
+  })();
+
+  const availableUsersToLink = (allClientUsers || []).filter(
+    (u) =>
+      !combinedUsers.some(
+        (cu) => cu.id === u.id || cu.email.toLowerCase() === u.email.toLowerCase()
+      )
+  );
 
   return (
     <div className="space-y-6">
@@ -542,18 +653,31 @@ export default function CompanyDetailsAdmin({
             <h2 className="text-sm font-bold text-slate-900 flex items-center">
               <Users className="w-4 h-4 mr-1.5 text-indigo-600" />
               <span>
-                Usuários com Acesso ({company.users.length})
+                Usuários com Acesso ({combinedUsers.length})
               </span>
             </h2>
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowLinkModal(true);
+                setLinkError(null);
+                setLinkEmail("");
+              }}
+              className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 transition-colors shadow-2xs"
+            >
+              <UserPlus className="w-3.5 h-3.5 mr-1" />
+              <span>+ Vincular Usuário Existente</span>
+            </button>
           </div>
 
-          {company.users.length === 0 ? (
+          {combinedUsers.length === 0 ? (
             <p className="text-xs text-slate-400 py-2">
               Nenhum usuário com acesso cadastrado nesta empresa.
             </p>
           ) : (
             <ul className="space-y-2">
-              {company.users.map((u: any) => {
+              {combinedUsers.map((u: any) => {
                 const isActive = u.isActive !== false;
                 return (
                   <li
@@ -561,7 +685,7 @@ export default function CompanyDetailsAdmin({
                     className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs"
                   >
                     <div>
-                      <div className="flex items-center space-x-2">
+                      <div className="flex items-center space-x-1.5">
                         <p className="font-bold text-slate-900">{u.name}</p>
                         {isActive ? (
                           <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
@@ -570,6 +694,14 @@ export default function CompanyDetailsAdmin({
                         ) : (
                           <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
                             Bloqueado
+                          </span>
+                        )}
+                        {u.isMembership && (
+                          <span
+                            className="text-[10px] font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-1.5 py-0.2 rounded"
+                            title="Usuário vinculado como sócio ou membro de múltiplas empresas"
+                          >
+                            Multi-empresa
                           </span>
                         )}
                       </div>
@@ -604,8 +736,19 @@ export default function CompanyDetailsAdmin({
                       <button
                         type="button"
                         disabled={isPending}
+                        onClick={() => handleUnlinkUser(u.id, u.name)}
+                        title="Desvincular desta empresa (o usuário continua em outras empresas)"
+                        className="px-2 py-1.5 rounded-lg text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 transition-colors flex items-center"
+                      >
+                        <Unlink className="w-3.5 h-3.5 mr-1" />
+                        <span>Desvincular</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isPending}
                         onClick={() => handleRemoveUserAccess(u.id, u.name)}
-                        title="Remover acesso definitivamente"
+                        title="Excluir conta definitivamente do sistema"
                         className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700 border border-rose-200 transition-colors"
                       >
                         <UserX className="w-3.5 h-3.5" />
@@ -622,9 +765,14 @@ export default function CompanyDetailsAdmin({
             onSubmit={handleInviteUser}
             className="pt-3 border-t border-slate-100 space-y-2 text-xs"
           >
-            <span className="font-bold text-slate-700 block">
-              + Convidar Novo Usuário para esta Empresa
-            </span>
+            <div>
+              <span className="font-bold text-slate-700 block">
+                + Convidar Novo Usuário para esta Empresa
+              </span>
+              <span className="text-[11px] text-slate-400 block">
+                Para pessoas sem cadastro anterior. Se o cliente já possui conta em outra empresa, use "+ Vincular Usuário Existente" acima.
+              </span>
+            </div>
             <div className="flex space-x-2">
               <input
                 type="email"
@@ -1036,6 +1184,99 @@ export default function CompanyDetailsAdmin({
                 <span>{isPending ? "Excluindo..." : "Sim, Excluir Empresa"}</span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Vincular Usuário Existente */}
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <div className="w-8 h-8 rounded-lg bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600">
+                  <UserPlus className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">
+                    Vincular Usuário Existente
+                  </h3>
+                  <p className="text-xs text-slate-500">
+                    Conceda acesso a um cliente já cadastrado no sistema
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLinkModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Ideal para clientes que possuem mais de uma empresa (holding, filiais ou sócios de múltiplos negócios). O cliente usará as mesmas credenciais e poderá alternar livremente entre as empresas no portal.
+            </p>
+
+            <form onSubmit={handleLinkUser} className="space-y-4 text-xs">
+              {availableUsersToLink.length > 0 && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Selecionar cliente existente:
+                  </label>
+                  <select
+                    value={linkEmail}
+                    onChange={(e) => setLinkEmail(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="">-- Selecione na lista ou digite abaixo --</option>
+                    {availableUsersToLink.map((u) => (
+                      <option key={u.id} value={u.email}>
+                        {u.name} ({u.email})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  E-mail do usuário cadastrado:
+                </label>
+                <input
+                  type="email"
+                  required
+                  placeholder="exemplo@cliente.com"
+                  value={linkEmail}
+                  onChange={(e) => setLinkEmail(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                />
+              </div>
+
+              {linkError && (
+                <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs">
+                  {linkError}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowLinkModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending || !linkEmail.trim()}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                >
+                  {isPending ? "Vinculando..." : "Vincular à Empresa"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

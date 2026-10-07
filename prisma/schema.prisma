@@ -39,10 +39,23 @@ model Company {
   financialStatus   String        @default("EM_DIA") // EM_DIA, PENDENTE, ATRASADO, ISENTO
   sites             CompanySite[]
   users             User[]
+  memberships       CompanyMember[]
   tickets           Ticket[]
   invitations       Invitation[]
   createdAt         DateTime      @default(now())
   updatedAt         DateTime      @updatedAt
+}
+
+model CompanyMember {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("CLIENT") // CLIENT, ADMIN
+  createdAt DateTime @default(now())
+
+  @@unique([companyId, userId])
 }
 
 model CompanySite {
@@ -65,6 +78,7 @@ model User {
   role                String          @default("CLIENT") // ADMIN, EQUIPE, CLIENT
   companyId           String?
   company             Company?        @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  companyMemberships  CompanyMember[]
   avatarUrl           String?
   isActive            Boolean         @default(true)
   failedLoginAttempts Int             @default(0)

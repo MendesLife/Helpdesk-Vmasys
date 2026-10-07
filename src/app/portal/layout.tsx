@@ -1,14 +1,15 @@
 import { getSession } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { logoutAction } from "@/app/actions/auth";
+import TenantSwitcher from "@/components/TenantSwitcher";
 import {
   Layers,
   LayoutDashboard,
   Ticket,
   PlusCircle,
   LogOut,
-  Building2,
   ExternalLink,
 } from "lucide-react";
 
@@ -23,16 +24,41 @@ export default async function PortalLayout({
     redirect("/login");
   }
 
+  // Busca todas as empresas ativas que o usuário tem permissão de acesso
+  let userCompanies: { id: string; name: string; status: string }[] = [];
+  if (session.userId) {
+    const memberships = await prisma.companyMember.findMany({
+      where: { userId: session.userId },
+      include: { company: true },
+    });
+
+    const mapped = [
+      ...(session.companyId
+        ? [{ id: session.companyId, name: session.companyName || "", status: "ACTIVE" }]
+        : []),
+      ...memberships.map((m) => ({
+        id: m.company.id,
+        name: m.company.name,
+        status: m.company.status,
+      })),
+    ];
+
+    userCompanies = mapped.filter(
+      (c, idx, arr) =>
+        arr.findIndex((x) => x.id === c.id) === idx && c.status === "ACTIVE"
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Top Navbar */}
       <header className="bg-white border-b border-slate-200/80 sticky top-0 z-30 shadow-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
-            <div className="flex items-center space-x-6">
+            <div className="flex items-center space-x-3 sm:space-x-6">
               <Link
                 href="/portal/dashboard"
-                className="flex items-center space-x-3"
+                className="flex items-center space-x-3 shrink-0"
               >
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white flex items-center justify-center shadow-md shadow-sky-100">
                   <Layers className="w-5 h-5" />
@@ -52,12 +78,10 @@ export default async function PortalLayout({
                 </div>
               </Link>
 
-              {session.companyName && (
-                <div className="hidden md:flex items-center px-2.5 py-1 rounded-lg bg-sky-50 border border-sky-100 text-sky-800 text-xs font-semibold">
-                  <Building2 className="w-3.5 h-3.5 mr-1.5 text-sky-600" />
-                  <span>{session.companyName}</span>
-                </div>
-              )}
+              <TenantSwitcher
+                currentCompanyId={session.companyId}
+                companies={userCompanies}
+              />
 
               {/* Desktop Nav Links */}
               <nav className="hidden sm:flex items-center space-x-1 pl-4">

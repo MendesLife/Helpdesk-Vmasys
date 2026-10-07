@@ -138,4 +138,55 @@ describe("Segurança e Isolamento Multi-Tenant entre Empresas", () => {
       expect(c.isInternal).toBe(false);
     });
   });
+
+  it("Usuário com múltiplas empresas deve acessar com isolamento estrito a empresa ativa na sessão", async () => {
+    const userAna = await prisma.user.findFirst({
+      where: { email: "ana@acmeodonto.com.br" },
+    });
+    expect(userAna).toBeDefined();
+
+    if (userAna) {
+      // Associa temporariamente Ana também à Techflow via CompanyMember
+      const membership = await prisma.companyMember.upsert({
+        where: {
+          companyId_userId: { companyId: techflowCompanyId, userId: userAna.id },
+        },
+        update: {},
+        create: {
+          companyId: techflowCompanyId,
+          userId: userAna.id,
+          role: "CLIENT",
+        },
+      });
+
+      expect(membership.id).toBeDefined();
+
+      // Quando a sessão estiver com Acme ativa:
+      const sessionInAcme: SessionPayload = {
+        userId: userAna.id,
+        name: userAna.name,
+        email: userAna.email,
+        role: "CLIENT",
+        companyId: acmeCompanyId,
+      };
+      expect(() => validateTenantAccess(sessionInAcme, acmeCompanyId)).not.toThrow();
+      expect(() => validateTenantAccess(sessionInAcme, techflowCompanyId)).toThrow(TenantAccessError);
+
+      // Quando a sessão alternar para a Techflow:
+      const sessionInTechflow: SessionPayload = {
+        userId: userAna.id,
+        name: userAna.name,
+        email: userAna.email,
+        role: "CLIENT",
+        companyId: techflowCompanyId,
+      };
+      expect(() => validateTenantAccess(sessionInTechflow, techflowCompanyId)).not.toThrow();
+      expect(() => validateTenantAccess(sessionInTechflow, acmeCompanyId)).toThrow(TenantAccessError);
+
+      // Remove associação de teste
+      await prisma.companyMember.deleteMany({
+        where: { companyId: techflowCompanyId, userId: userAna.id },
+      });
+    }
+  });
 });

@@ -109,6 +109,11 @@ export async function createInvitationAction(formData: FormData) {
   // Verifica se o usuário já existe
   const existingUser = await prisma.user.findUnique({ where: { email } });
   if (existingUser) {
+    if (companyId && existingUser.role === "CLIENT") {
+      return {
+        error: `O usuário ${existingUser.name} (${existingUser.email}) já possui cadastro. Use a opção "+ Vincular Usuário Já Cadastrado" abaixo para associá-lo a esta empresa.`,
+      };
+    }
     return { error: "Já existe um usuário cadastrado com este e-mail." };
   }
 
@@ -365,6 +370,7 @@ export async function removeUserAccessAction(userId: string) {
     const companyId = user.companyId;
 
     if (user.createdTickets.length > 0 || user.comments.length > 0) {
+      await prisma.companyMember.deleteMany({ where: { userId } });
       await prisma.user.update({
         where: { id: userId },
         data: {
@@ -373,6 +379,7 @@ export async function removeUserAccessAction(userId: string) {
         },
       });
     } else {
+      await prisma.companyMember.deleteMany({ where: { userId } });
       await prisma.user.delete({ where: { id: userId } });
     }
 
@@ -447,5 +454,102 @@ export async function updateTeamMemberAction(formData: FormData) {
   } catch (err: any) {
     console.error("Erro ao atualizar membro da equipe:", err);
     return { error: "Erro ao atualizar membro da equipe." };
+  }
+}
+
+export async function linkUserToCompanyAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || (session.role !== "ADMIN" && session.role !== "EQUIPE")) {
+    return { error: "Não autorizado." };
+  }
+
+  const companyId = formData.get("companyId")?.toString();
+  const email = formData.get("email")?.toString().trim().toLowerCase();
+
+  if (!companyId || !email) {
+    return { error: "Informe o e-mail do usuário e a empresa." };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { email },
+    });
+
+    if (!user) {
+      return {
+        error:
+          "Nenhum usuário cadastrado com este e-mail. Para convidar um novo cliente, use o formulário 'Convidar Novo Usuário'.",
+      };
+    }
+
+    if (user.role !== "CLIENT") {
+      return {
+        error: "Apenas contas com perfil de Cliente podem ser vinculadas a empresas.",
+      };
+    }
+
+    // Cria associação na tabela CompanyMember
+    await prisma.companyMember.upsert({
+      where: {
+        companyId_userId: { companyId, userId: user.id },
+      },
+      update: {},
+      create: {
+        companyId,
+        userId: user.id,
+        role: "CLIENT",
+      },
+    });
+
+    // Se o usuário não tinha empresa primária, define esta
+    if (!user.companyId) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { companyId },
+      });
+    }
+
+    revalidatePath(`/admin/clientes/${companyId}`);
+    return {
+      success: true,
+      message: `Usuário ${user.name} (${user.email}) vinculado com sucesso a esta empresa!`,
+    };
+  } catch (err: any) {
+    console.error("Erro ao vincular usuário à empresa:", err);
+    return { error: "Erro ao vincular usuário à empresa." };
+  }
+}
+
+export async function unlinkUserFromCompanyAction(companyId: string, userId: string) {
+  const session = await getSession();
+  if (!session || (session.role !== "ADMIN" && session.role !== "EQUIPE")) {
+    return { error: "Não autorizado." };
+  }
+
+  try {
+    // 1. Remove da tabela CompanyMember
+    await prisma.companyMember.deleteMany({
+      where: { companyId, userId },
+    });
+
+    // 2. Se esta for a empresa primária, busca outra empresa que o usuário participe
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: { companyMemberships: true },
+    });
+
+    if (user && user.companyId === companyId) {
+      const nextMembership = user.companyMemberships.find((m) => m.companyId !== companyId);
+      await prisma.user.update({
+        where: { id: userId },
+        data: { companyId: nextMembership ? nextMembership.companyId : null },
+      });
+    }
+
+    revalidatePath(`/admin/clientes/${companyId}`);
+    return { success: true, message: "Acesso à empresa desvinculado com sucesso." };
+  } catch (err: any) {
+    console.error("Erro ao desvincular usuário:", err);
+    return { error: "Erro ao desvincular usuário da empresa." };
   }
 }

@@ -7,6 +7,7 @@ import {
   setSessionCookie,
   clearSessionCookie,
   verifyPassword,
+  getSession,
 } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
@@ -40,6 +41,9 @@ export async function loginAction(
       where: { email: validated.data.email.toLowerCase() },
       include: {
         company: true,
+        companyMemberships: {
+          include: { company: true },
+        },
       },
     });
 
@@ -47,18 +51,32 @@ export async function loginAction(
       return { error: "Credenciais inválidas ou acesso desativado pelo administrador." };
     }
 
-    // Se for perfil de cliente, valida o status contratual da empresa
+    let activeCompany = user.company;
+
+    // Se for perfil de cliente, valida empresas acessíveis e status
     if (user.role === "CLIENT") {
-      if (!user.companyId || !user.company) {
+      const accessibleCompanies = [
+        ...(user.company ? [user.company] : []),
+        ...user.companyMemberships.map((m) => m.company),
+      ].filter((c, idx, arr) => arr.findIndex((x) => x.id === c.id) === idx);
+
+      if (accessibleCompanies.length === 0) {
         return { error: "Usuário não possui uma empresa vinculada ativa." };
       }
-      if (user.company.status === "SUSPENDED") {
+
+      // Prioriza a empresa ativa, ou a primeira que estiver ACTIVE
+      activeCompany =
+        accessibleCompanies.find((c) => c.id === user.companyId && c.status === "ACTIVE") ||
+        accessibleCompanies.find((c) => c.status === "ACTIVE") ||
+        accessibleCompanies[0];
+
+      if (activeCompany.status === "SUSPENDED") {
         return {
           error:
             "O acesso da sua empresa está temporariamente suspenso. Entre em contato com a equipe VMASYS.",
         };
       }
-      if (user.company.status === "CANCELLED") {
+      if (activeCompany.status === "CANCELLED") {
         return {
           error:
             "O contrato da sua empresa foi cancelado. Entre em contato com a equipe VMASYS.",
@@ -101,8 +119,8 @@ export async function loginAction(
       name: user.name,
       email: user.email,
       role: user.role as "ADMIN" | "EQUIPE" | "CLIENT",
-      companyId: user.companyId,
-      companyName: user.company?.name || null,
+      companyId: activeCompany?.id || user.companyId,
+      companyName: activeCompany?.name || user.company?.name || null,
     });
 
     await setSessionCookie(token);
@@ -117,6 +135,60 @@ export async function loginAction(
   } catch (err: any) {
     console.error("Erro durante autenticação:", err);
     return { error: "Erro interno no servidor ao realizar login." };
+  }
+}
+
+export async function switchCompanyAction(targetCompanyId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "CLIENT") {
+    return { error: "Não autorizado." };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: session.userId },
+      include: {
+        company: true,
+        companyMemberships: {
+          include: { company: true },
+        },
+      },
+    });
+
+    if (!user || !user.isActive) {
+      return { error: "Usuário inativo ou não encontrado." };
+    }
+
+    const accessible = [
+      ...(user.company ? [user.company] : []),
+      ...user.companyMemberships.map((m) => m.company),
+    ].find((c) => c.id === targetCompanyId);
+
+    if (!accessible) {
+      return { error: "Você não possui acesso a esta empresa." };
+    }
+
+    if (accessible.status === "SUSPENDED") {
+      return { error: "O acesso a esta empresa está temporariamente suspenso." };
+    }
+    if (accessible.status === "CANCELLED") {
+      return { error: "O contrato desta empresa foi cancelado." };
+    }
+
+    const newToken = await createSessionToken({
+      userId: user.id,
+      name: user.name,
+      email: user.email,
+      role: "CLIENT",
+      companyId: accessible.id,
+      companyName: accessible.name,
+    });
+
+    await setSessionCookie(newToken);
+    return { success: true };
+  } catch (err: any) {
+    console.error("Erro ao alternar empresa:", err);
+    return { error: "Erro ao alternar empresa." };
   }
 }
 

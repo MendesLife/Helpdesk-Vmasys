@@ -60,6 +60,20 @@ export async function acceptInvitationAction(formData: FormData) {
       },
     });
 
+    if (invite.companyId && invite.role === "CLIENT") {
+      await prisma.companyMember.upsert({
+        where: {
+          companyId_userId: { companyId: invite.companyId, userId: newUser.id },
+        },
+        update: {},
+        create: {
+          companyId: invite.companyId,
+          userId: newUser.id,
+          role: "CLIENT",
+        },
+      });
+    }
+
     // Marca o convite como aceito
     await prisma.invitation.update({
       where: { id: invite.id },
