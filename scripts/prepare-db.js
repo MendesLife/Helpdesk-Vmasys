@@ -8,8 +8,21 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 
+let dbUrl = process.env.DATABASE_URL || "";
+
+// Se não estiver injetado no ambiente, carrega do arquivo .env
+if (!dbUrl) {
+  const envPath = path.join(__dirname, "../.env");
+  if (fs.existsSync(envPath)) {
+    const envContent = fs.readFileSync(envPath, "utf8");
+    const match = envContent.match(/^DATABASE_URL\s*=\s*["']?([^"'\r\n]+)["']?/m);
+    if (match) {
+      dbUrl = match[1].trim();
+    }
+  }
+}
+
 const schemaPath = path.join(__dirname, "../prisma/schema.prisma");
-const dbUrl = process.env.DATABASE_URL || "";
 
 if (!fs.existsSync(schemaPath)) {
   console.log("schema.prisma não encontrado.");
