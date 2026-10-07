@@ -13,6 +13,10 @@ import {
   linkUserToCompanyAction,
   unlinkUserFromCompanyAction,
 } from "@/app/actions/admin";
+import {
+  updateOnboardingStageAction,
+  reviewBriefingAction,
+} from "@/app/actions/briefing";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -45,6 +49,10 @@ import {
   Zap,
   FileText,
   Package,
+  Palette,
+  FolderArchive,
+  Sparkles,
+  Layers,
 } from "lucide-react";
 
 export default function CompanyDetailsAdmin({
@@ -107,8 +115,54 @@ export default function CompanyDetailsAdmin({
   const [linkEmail, setLinkEmail] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
 
+  // Onboarding Stage & Briefing Review State
+  const [currentStage, setCurrentStage] = useState(
+    company.onboardingStage || "ATIVO_MANUTENCAO"
+  );
+  const [revisionNotes, setRevisionNotes] = useState("");
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
+  const [briefingCopied, setBriefingCopied] = useState(false);
+
   // Feedback State
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+
+  const handleStageChange = (newStage: string) => {
+    setCurrentStage(newStage);
+    startTransition(async () => {
+      const res = await updateOnboardingStageAction(company.id, newStage);
+      if (res?.message) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else if (res?.error) {
+        alert(res.error);
+      }
+    });
+  };
+
+  const handleReviewBriefing = (decision: "APPROVE" | "REQUEST_REVISION") => {
+    if (decision === "REQUEST_REVISION" && !revisionNotes.trim()) {
+      alert("Por favor, descreva quais ajustes o cliente deve realizar no briefing.");
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await reviewBriefingAction(
+        company.id,
+        decision,
+        decision === "REQUEST_REVISION" ? revisionNotes : undefined
+      );
+      if (res?.message) {
+        setActionFeedback(res.message);
+        setShowRevisionModal(false);
+        setRevisionNotes("");
+        setTimeout(() => setActionFeedback(null), 3500);
+        router.refresh();
+      } else if (res?.error) {
+        alert(res.error);
+      }
+    });
+  };
 
   const handleAddSite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -443,11 +497,27 @@ export default function CompanyDetailsAdmin({
 
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center space-x-2 flex-wrap gap-y-1.5">
               <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
                 {company.plan?.name || "Sem Plano"}
               </span>
               {getStatusBadge(company.status || "ACTIVE")}
+
+              <div className="flex items-center space-x-1.5 pl-1.5 border-l border-slate-200">
+                <span className="text-[11px] font-bold text-slate-400">Etapa:</span>
+                <select
+                  disabled={isPending}
+                  value={currentStage}
+                  onChange={(e) => handleStageChange(e.target.value)}
+                  className="text-xs font-bold py-1 px-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-800 focus:outline-none focus:border-indigo-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="BRIEFING_PENDENTE">🟡 1. Briefing Pendente</option>
+                  <option value="BRIEFING_EM_ANALISE">🟣 2. Briefing em Análise</option>
+                  <option value="EM_DESENVOLVIMENTO">🔵 3. Em Criação / Design</option>
+                  <option value="EM_HOMOLOGACAO">🟢 4. Em Homologação</option>
+                  <option value="ATIVO_MANUTENCAO">🟢 5. No Ar / Manutenção Ativa</option>
+                </select>
+              </div>
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mt-1">
               {company.name}
@@ -561,6 +631,226 @@ export default function CompanyDetailsAdmin({
             <p className="text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 whitespace-pre-wrap">
               {company.notes}
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Bloco de Briefing do Projeto */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-lg bg-sky-50 text-sky-600 flex items-center justify-center">
+              <FileText className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-bold text-slate-900">
+                  Briefing para Criação do Site
+                </h2>
+                {company.briefing?.status === "APPROVED" ? (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                    Aprovado ✓
+                  </span>
+                ) : company.briefing?.status === "SUBMITTED" ? (
+                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200 px-2 py-0.5 rounded">
+                    Aguardando Avaliação da Equipe
+                  </span>
+                ) : company.briefing?.status === "REVISION_REQUESTED" ? (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                    Ajustes Solicitados
+                  </span>
+                ) : company.briefing?.status === "DRAFT" ? (
+                  <span className="text-[10px] font-bold text-slate-700 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded">
+                    Rascunho Salvo pelo Cliente
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                    Não Iniciado pelo Cliente
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Informações fornecidas pelo cliente para desenvolvimento do projeto
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            {/* Copiar Link do Briefing */}
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/portal/briefing`;
+                navigator.clipboard.writeText(url);
+                setBriefingCopied(true);
+                setTimeout(() => setBriefingCopied(false), 2500);
+              }}
+              className="inline-flex items-center px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition-colors"
+              title="Copie o link para enviar diretamente ao cliente pelo WhatsApp"
+            >
+              {briefingCopied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  <span className="text-emerald-700">Link Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                  <span>Copiar Link do Briefing</span>
+                </>
+              )}
+            </button>
+
+            {/* Ações de Avaliação */}
+            {company.briefing?.status === "SUBMITTED" && (
+              <>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => setShowRevisionModal(true)}
+                  className="inline-flex items-center px-3 py-1.5 rounded-xl border border-amber-200 text-amber-800 bg-amber-50 hover:bg-amber-100 text-xs font-semibold transition-colors"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                  <span>Solicitar Ajustes</span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => handleReviewBriefing("APPROVE")}
+                  className="inline-flex items-center px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-xs transition-colors"
+                >
+                  <Check className="w-3.5 h-3.5 mr-1" />
+                  <span>Aprovar Briefing</span>
+                </button>
+              </>
+            )}
+
+            {company.briefing?.status === "APPROVED" && (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => setShowRevisionModal(true)}
+                className="inline-flex items-center px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" />
+                <span>Reabrir para Ajustes</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Conteúdo do Briefing */}
+        {!company.briefing || (!company.briefing.businessOverview && !company.briefing.requiredPages) ? (
+          <div className="p-6 text-center rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-500 space-y-2">
+            <Clock className="w-8 h-8 text-slate-300 mx-auto" />
+            <p className="font-semibold text-slate-700">
+              O cliente ainda não enviou o briefing para este projeto.
+            </p>
+            <p className="text-[11px] text-slate-400">
+              Você pode copiar o link acima e enviar pelo WhatsApp para o cliente preencher no portal.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* Grid com Respostas do Briefing */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="font-bold text-slate-700 flex items-center">
+                  <Building2 className="w-3.5 h-3.5 mr-1 text-sky-600" />
+                  Sobre a Empresa e Serviços
+                </span>
+                <p className="text-slate-800 whitespace-pre-wrap leading-relaxed mt-1">
+                  {company.briefing.businessOverview || "Não informado"}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="font-bold text-slate-700 flex items-center">
+                  <Users className="w-3.5 h-3.5 mr-1 text-sky-600" />
+                  Público-Alvo & Perfil do Cliente
+                </span>
+                <p className="text-slate-800 whitespace-pre-wrap leading-relaxed mt-1">
+                  {company.briefing.targetAudience || "Não informado"}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="font-bold text-slate-700 flex items-center">
+                  <Palette className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                  Identidade Visual & Cores
+                </span>
+                <p className="text-slate-800 whitespace-pre-wrap leading-relaxed mt-1">
+                  {company.briefing.visualStyle || "Não informado"}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="font-bold text-slate-700 flex items-center">
+                  <Globe className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+                  Referências & Concorrentes
+                </span>
+                <p className="text-slate-800 whitespace-pre-wrap leading-relaxed mt-1">
+                  {company.briefing.competitors || "Não informado"}
+                </p>
+              </div>
+
+              <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1 md:col-span-2">
+                <span className="font-bold text-slate-700 flex items-center">
+                  <Layers className="w-3.5 h-3.5 mr-1 text-teal-600" />
+                  Estrutura & Páginas Necessárias
+                </span>
+                <p className="text-slate-800 whitespace-pre-wrap leading-relaxed font-mono text-[11px] mt-1 bg-white p-3 rounded-lg border border-slate-200">
+                  {company.briefing.requiredPages || "Não informado"}
+                </p>
+              </div>
+
+              {company.briefing.features && (
+                <div className="p-4 rounded-xl bg-slate-50 border border-slate-100 space-y-1 md:col-span-2">
+                  <span className="font-bold text-slate-700 flex items-center">
+                    <Sparkles className="w-3.5 h-3.5 mr-1 text-amber-500" />
+                    Recursos & Integrações Desejadas
+                  </span>
+                  <p className="text-slate-800 leading-relaxed mt-1">
+                    {company.briefing.features}
+                  </p>
+                </div>
+              )}
+
+              {company.briefing.contentDriveUrl && (
+                <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200/80 space-y-1 md:col-span-2 flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-amber-900 flex items-center">
+                      <FolderArchive className="w-3.5 h-3.5 mr-1 text-amber-600" />
+                      Pasta de Logotipos, Fotos e Conteúdo
+                    </span>
+                    <p className="text-amber-800 text-[11px] truncate max-w-lg mt-0.5">
+                      {company.briefing.contentDriveUrl}
+                    </p>
+                  </div>
+                  <a
+                    href={company.briefing.contentDriveUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition-colors shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                    <span>Abrir Drive</span>
+                  </a>
+                </div>
+              )}
+
+              {company.briefing.adminNotes && (
+                <div className="p-3.5 rounded-xl bg-slate-100 border border-slate-200 text-xs md:col-span-2 space-y-1">
+                  <span className="font-bold text-slate-700 block">
+                    Notas Internas / Ajustes da Equipe:
+                  </span>
+                  <p className="text-slate-600 whitespace-pre-wrap">
+                    {company.briefing.adminNotes}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -1277,6 +1567,58 @@ export default function CompanyDetailsAdmin({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Solicitação de Ajustes no Briefing */}
+      {showRevisionModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600" />
+                <span>Solicitar Ajustes no Briefing</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowRevisionModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Escreva orientações para o cliente saber o que precisa ser complementado ou ajustado no briefing:
+            </p>
+
+            <textarea
+              rows={4}
+              required
+              value={revisionNotes}
+              onChange={(e) => setRevisionNotes(e.target.value)}
+              placeholder="Ex: Por favor, forneça as referências visuais e adicione as fotos dos tratamentos no link do Drive..."
+              className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-900 focus:outline-none focus:border-indigo-600 leading-relaxed"
+            />
+
+            <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowRevisionModal(false)}
+                className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isPending || !revisionNotes.trim()}
+                onClick={() => handleReviewBriefing("REQUEST_REVISION")}
+                className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold disabled:opacity-50"
+              >
+                {isPending ? "Salvando..." : "Enviar Solicitação"}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -34,6 +34,7 @@ interface CompanyItem {
   status: string;
   notes?: string | null;
   planId?: string | null;
+  onboardingStage?: string | null;
   plan: { id: string; name: string; price?: number; maxSites?: number } | null;
   contractStartDate?: string | Date | null;
   billingDay?: number | null;
@@ -54,6 +55,7 @@ export default function ClientsListAdmin({
 }) {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
+  const [stageFilter, setStageFilter] = useState<string>("ALL");
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 
@@ -61,6 +63,7 @@ export default function ClientsListAdmin({
   const [name, setName] = useState("");
   const [document, setDocument] = useState("");
   const [planId, setPlanId] = useState(plans[0]?.id || "");
+  const [createOnboardingStage, setCreateOnboardingStage] = useState("BRIEFING_PENDENTE");
   const [siteName, setSiteName] = useState("Site Principal");
   const [domainUrl, setDomainUrl] = useState("");
   const [notes, setNotes] = useState("");
@@ -79,6 +82,7 @@ export default function ClientsListAdmin({
   const [editDocument, setEditDocument] = useState("");
   const [editPlanId, setEditPlanId] = useState("");
   const [editStatus, setEditStatus] = useState("ACTIVE");
+  const [editOnboardingStage, setEditOnboardingStage] = useState("ATIVO_MANUTENCAO");
   const [editNotes, setEditNotes] = useState("");
   const [editContractStartDate, setEditContractStartDate] = useState("");
   const [editBillingDay, setEditBillingDay] = useState("10");
@@ -99,6 +103,7 @@ export default function ClientsListAdmin({
     formData.append("name", name);
     formData.append("document", document);
     formData.append("planId", planId);
+    formData.append("onboardingStage", createOnboardingStage);
     formData.append("siteName", siteName);
     formData.append("domainUrl", domainUrl);
     formData.append("notes", notes);
@@ -130,6 +135,7 @@ export default function ClientsListAdmin({
     setEditDocument(c.document || "");
     setEditPlanId(c.plan?.id || plans[0]?.id || "");
     setEditStatus(c.status || "ACTIVE");
+    setEditOnboardingStage(c.onboardingStage || "ATIVO_MANUTENCAO");
     setEditNotes(c.notes || "");
     setEditContractStartDate(
       c.contractStartDate
@@ -156,6 +162,7 @@ export default function ClientsListAdmin({
     formData.append("document", editDocument);
     formData.append("planId", editPlanId);
     formData.append("status", editStatus);
+    formData.append("onboardingStage", editOnboardingStage);
     formData.append("notes", editNotes);
     formData.append("contractStartDate", editContractStartDate);
     formData.append("billingDay", editBillingDay);
@@ -257,6 +264,52 @@ export default function ClientsListAdmin({
     }
   };
 
+  const getOnboardingBadge = (stage?: string | null) => {
+    switch (stage) {
+      case "BRIEFING_PENDENTE":
+        return (
+          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 mr-1.5 animate-pulse" />
+            Briefing Pendente
+          </span>
+        );
+      case "BRIEFING_EM_ANALISE":
+        return (
+          <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2 py-0.5 rounded-md flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-500 mr-1.5" />
+            Briefing em Análise
+          </span>
+        );
+      case "EM_DESENVOLVIMENTO":
+        return (
+          <span className="text-[10px] font-bold text-sky-700 bg-sky-50 border border-sky-200/80 px-2 py-0.5 rounded-md flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mr-1.5" />
+            Em Criação
+          </span>
+        );
+      case "EM_HOMOLOGACAO":
+        return (
+          <span className="text-[10px] font-bold text-teal-700 bg-teal-50 border border-teal-200/80 px-2 py-0.5 rounded-md flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-teal-500 mr-1.5" />
+            Em Homologação
+          </span>
+        );
+      case "ATIVO_MANUTENCAO":
+      default:
+        return (
+          <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md flex items-center">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5" />
+            No Ar / Ativo
+          </span>
+        );
+    }
+  };
+
+  const filteredCompanies = companies.filter((c) => {
+    if (stageFilter === "ALL") return true;
+    return (c.onboardingStage || "ATIVO_MANUTENCAO") === stageFilter;
+  });
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -289,9 +342,66 @@ export default function ClientsListAdmin({
         </div>
       </div>
 
+      {/* Filtros por Etapa de Criação / Onboarding */}
+      <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none text-xs">
+        {[
+          { id: "ALL", label: "Todas as Empresas", count: companies.length },
+          {
+            id: "BRIEFING_PENDENTE",
+            label: "Aguardando Briefing",
+            count: companies.filter((c) => c.onboardingStage === "BRIEFING_PENDENTE").length,
+          },
+          {
+            id: "BRIEFING_EM_ANALISE",
+            label: "Briefing em Análise",
+            count: companies.filter((c) => c.onboardingStage === "BRIEFING_EM_ANALISE").length,
+          },
+          {
+            id: "EM_DESENVOLVIMENTO",
+            label: "Em Criação",
+            count: companies.filter((c) => c.onboardingStage === "EM_DESENVOLVIMENTO").length,
+          },
+          {
+            id: "EM_HOMOLOGACAO",
+            label: "Em Homologação",
+            count: companies.filter((c) => c.onboardingStage === "EM_HOMOLOGACAO").length,
+          },
+          {
+            id: "ATIVO_MANUTENCAO",
+            label: "No Ar / Ativo",
+            count: companies.filter(
+              (c) => !c.onboardingStage || c.onboardingStage === "ATIVO_MANUTENCAO"
+            ).length,
+          },
+        ].map((tab) => {
+          const isSelected = stageFilter === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setStageFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-colors flex items-center space-x-1.5 ${
+                isSelected
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200"
+              }`}
+            >
+              <span>{tab.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  isSelected ? "bg-slate-700 text-slate-200" : "bg-slate-100 text-slate-600"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       {/* Grid de Empresas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {companies.map((c) => {
+        {filteredCompanies.map((c) => {
           const openTicketsCount = c.tickets.filter(
             (t) => t.status !== "CONCLUIDO" && t.status !== "CANCELADO"
           ).length;
@@ -308,12 +418,15 @@ export default function ClientsListAdmin({
               className="bg-white rounded-2xl border border-slate-200/90 shadow-xs hover:shadow-md transition-all p-6 flex flex-col justify-between"
             >
               <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {c.plan?.name || "Sem Plano"}
-                  </span>
+                <div className="flex items-center justify-between mb-3 gap-2">
+                  <div className="flex items-center space-x-1.5 flex-wrap gap-y-1">
+                    <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                      {c.plan?.name || "Sem Plano"}
+                    </span>
+                    {getOnboardingBadge(c.onboardingStage)}
+                  </div>
 
-                  <div className="flex items-center space-x-1.5">
+                  <div className="flex items-center space-x-1.5 shrink-0">
                     {getStatusBadge(c.status)}
                     <button
                       type="button"
@@ -506,6 +619,23 @@ export default function ClientsListAdmin({
                     ))}
                   </select>
                 </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Etapa Inicial do Projeto / Onboarding
+                </label>
+                <select
+                  value={createOnboardingStage}
+                  onChange={(e) => setCreateOnboardingStage(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                >
+                  <option value="BRIEFING_PENDENTE">1. Briefing Pendente (Aguardando cliente preencher)</option>
+                  <option value="BRIEFING_EM_ANALISE">2. Briefing em Análise (Equipe analisando)</option>
+                  <option value="EM_DESENVOLVIMENTO">3. Em Desenvolvimento (Criação do site)</option>
+                  <option value="EM_HOMOLOGACAO">4. Em Homologação (Revisão final)</option>
+                  <option value="ATIVO_MANUTENCAO">5. No Ar / Manutenção Ativa (Site pronto)</option>
+                </select>
               </div>
 
               {/* Seção Contratual & Financeira */}
@@ -729,22 +859,41 @@ export default function ClientsListAdmin({
                 </div>
               </div>
 
-              <div>
-                <label className="block font-semibold text-slate-700 mb-1">
-                  Plano Vinculado
-                </label>
-                <select
-                  value={editPlanId}
-                  onChange={(e) => setEditPlanId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
-                >
-                  <option value="">Nenhum plano específico</option>
-                  {plans.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name} {p.price ? `(R$ ${p.price}/mês)` : ""}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Plano Vinculado
+                  </label>
+                  <select
+                    value={editPlanId}
+                    onChange={(e) => setEditPlanId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="">Nenhum plano específico</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {p.price ? `(R$ ${p.price}/mês)` : ""}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Etapa de Criação / Onboarding
+                  </label>
+                  <select
+                    value={editOnboardingStage}
+                    onChange={(e) => setEditOnboardingStage(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="BRIEFING_PENDENTE">1. Briefing Pendente</option>
+                    <option value="BRIEFING_EM_ANALISE">2. Briefing em Análise</option>
+                    <option value="EM_DESENVOLVIMENTO">3. Em Criação / Design</option>
+                    <option value="EM_HOMOLOGACAO">4. Em Homologação / Revisão</option>
+                    <option value="ATIVO_MANUTENCAO">5. No Ar / Manutenção Ativa</option>
+                  </select>
+                </div>
               </div>
 
               {/* Seção Contratual & Financeira no Edit */}

@@ -14,6 +14,7 @@ export default async function CompanyDetailPage({ params }: Props) {
       where: { id },
       include: {
         plan: true,
+        briefing: true,
         sites: { orderBy: { isPrimary: "desc" } },
         users: { orderBy: { createdAt: "asc" } },
         memberships: {

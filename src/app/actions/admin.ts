@@ -244,6 +244,7 @@ export async function updateCompanyAction(formData: FormData) {
   const customPrice = customPriceRaw ? parseFloat(customPriceRaw) : null;
   const paymentMethod = formData.get("paymentMethod")?.toString() || "PIX";
   const financialStatus = formData.get("financialStatus")?.toString() || "EM_DIA";
+  const onboardingStage = formData.get("onboardingStage")?.toString() || undefined;
 
   if (!companyId || !name) {
     return { error: "Identificador e nome da empresa são obrigatórios." };
@@ -263,6 +264,7 @@ export async function updateCompanyAction(formData: FormData) {
         customPrice: isNaN(customPrice as any) ? null : customPrice,
         paymentMethod,
         financialStatus,
+        ...(onboardingStage ? { onboardingStage } : {}),
       },
     });
 

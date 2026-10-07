@@ -17,6 +17,7 @@ model Plan {
   maxPages              Int?      // Limite de páginas por site (null = ilimitado)
   slaHours              Int?      @default(48) // Prazo de SLA em horas úteis
   features              String?   // Lista de recursos inclusos (separados por linha)
+  stripePriceId         String?   // ID do preço no Stripe
   isActive              Boolean   @default(true)
   companies             Company[]
   createdAt             DateTime  @default(now())
@@ -37,6 +38,18 @@ model Company {
   customPrice       Float?        // Valor da mensalidade se negociado individualmente
   paymentMethod     String?       @default("PIX") // PIX, BOLETO, CARTAO, TRANSFERENCIA
   financialStatus   String        @default("EM_DIA") // EM_DIA, PENDENTE, ATRASADO, ISENTO
+
+  // Onboarding & Etapas de Criação
+  onboardingStage   String        @default("BRIEFING_PENDENTE") 
+  // BRIEFING_PENDENTE, BRIEFING_EM_ANALISE, EM_DESENVOLVIMENTO, EM_HOMOLOGACAO, ATIVO_MANUTENCAO
+
+  // Integração Stripe (preparação)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+
+  briefing          ProjectBriefing?
+  contract          Contract?
+  invoices          Invoice[]
   sites             CompanySite[]
   users             User[]
   memberships       CompanyMember[]
@@ -187,3 +200,52 @@ model TimeLog {
   description  String?
   createdAt    DateTime @default(now())
 }
+
+model ProjectBriefing {
+  id               String    @id @default(cuid())
+  companyId        String    @unique
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status           String    @default("DRAFT") // DRAFT, SUBMITTED, APPROVED, REVISION_REQUESTED
+  businessOverview String?   // O que a empresa faz, diferenciais, proposta de valor
+  targetAudience   String?   // Perfil do cliente ideal / público-alvo
+  visualStyle      String?   // Cores preferidas, estilo visual (minimalista, moderno, corporativo, etc)
+  competitors      String?   // Referências de sites que gosta e não gosta
+  requiredPages    String?   // Páginas desejadas (ex: Início, Sobre, Serviços, Contato)
+  features         String?   // Recursos (Botão WhatsApp, formulário, mapa, blog, etc)
+  contentDriveUrl  String?   // Link do Google Drive / Dropbox com fotos, logo e textos
+  adminNotes       String?   // Feedback da equipe VMASYS (solicitação de ajustes ou anotações)
+  submittedAt      DateTime?
+  approvedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+
+model Contract {
+  id             String    @id @default(cuid())
+  companyId      String    @unique
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  status         String    @default("PENDING") // PENDING, SIGNED, CANCELLED
+  termsContent   String?   // Texto completo ou cláusulas personalizadas
+  signedAt       DateTime?
+  signedByName   String?
+  signedByEmail  String?
+  signedByIp     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model Invoice {
+  id               String    @id @default(cuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stripeInvoiceId  String?
+  amount           Float
+  dueDate          DateTime
+  paidAt           DateTime?
+  status           String    @default("PENDING") // PENDING, PAID, OVERDUE, CANCELLED
+  paymentMethod    String?   @default("PIX")
+  hostedInvoiceUrl String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+}
+

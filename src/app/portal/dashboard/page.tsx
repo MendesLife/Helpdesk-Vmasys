@@ -12,6 +12,7 @@ import {
   Sparkles,
   ExternalLink,
   Layers,
+  FileText,
 } from "lucide-react";
 
 export default async function ClientDashboardPage() {
@@ -33,12 +34,13 @@ export default async function ClientDashboardPage() {
     );
   }
 
-  // Busca dados da empresa (Plano e Sites)
+  // Busca dados da empresa (Plano, Sites e Briefing)
   const company = await prisma.company.findUnique({
     where: { id: companyId },
     include: {
       plan: true,
       sites: true,
+      briefing: true,
     },
   });
 
@@ -109,6 +111,165 @@ export default async function ClientDashboardPage() {
           <span>Nova Solicitação</span>
         </Link>
       </div>
+
+      {/* Pipeline de Criação / Onboarding Tracker */}
+      {company.onboardingStage !== "ATIVO_MANUTENCAO" && (
+        <div className="bg-gradient-to-br from-slate-900 to-indigo-950 rounded-2xl p-6 sm:p-7 text-white shadow-lg border border-slate-800 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800/80 pb-4">
+            <div>
+              <div className="inline-flex items-center space-x-2 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30 mb-1.5">
+                <Sparkles className="w-3.5 h-3.5 text-sky-400" />
+                <span>Onboarding & Criação do Projeto</span>
+              </div>
+              <h2 className="text-lg sm:text-xl font-bold text-white">
+                Status de Criação do seu Site
+              </h2>
+            </div>
+
+            <Link
+              href="/portal/briefing"
+              className="inline-flex items-center px-4 py-2 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-bold text-xs shadow-md transition-all self-start sm:self-auto"
+            >
+              <FileText className="w-4 h-4 mr-1.5" />
+              <span>
+                {company.briefing?.status === "APPROVED"
+                  ? "Ver Briefing Aprovado"
+                  : company.briefing?.status === "SUBMITTED"
+                  ? "Ver Briefing Enviado"
+                  : "Preencher Briefing do Projeto"}
+              </span>
+            </Link>
+          </div>
+
+          {/* Stepper Visual de 4 Etapas */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {[
+              {
+                step: "1",
+                title: "Briefing do Projeto",
+                desc:
+                  company.briefing?.status === "APPROVED"
+                    ? "Aprovado ✓"
+                    : company.briefing?.status === "SUBMITTED"
+                    ? "Em Análise"
+                    : "Pendente",
+                isCurrent:
+                  company.onboardingStage === "BRIEFING_PENDENTE" ||
+                  company.onboardingStage === "BRIEFING_EM_ANALISE" ||
+                  !company.onboardingStage,
+                isDone:
+                  company.briefing?.status === "APPROVED" ||
+                  company.onboardingStage === "EM_DESENVOLVIMENTO" ||
+                  company.onboardingStage === "EM_HOMOLOGACAO" ||
+                  company.onboardingStage === "ATIVO_MANUTENCAO",
+              },
+              {
+                step: "2",
+                title: "Criação & Design",
+                desc:
+                  company.onboardingStage === "EM_DESENVOLVIMENTO"
+                    ? "Em Andamento"
+                    : company.onboardingStage === "EM_HOMOLOGACAO" ||
+                      company.onboardingStage === "ATIVO_MANUTENCAO"
+                    ? "Concluído ✓"
+                    : "Aguardando",
+                isCurrent: company.onboardingStage === "EM_DESENVOLVIMENTO",
+                isDone:
+                  company.onboardingStage === "EM_HOMOLOGACAO" ||
+                  company.onboardingStage === "ATIVO_MANUTENCAO",
+              },
+              {
+                step: "3",
+                title: "Homologação & Revisão",
+                desc:
+                  company.onboardingStage === "EM_HOMOLOGACAO"
+                    ? "Pronto para Revisão"
+                    : company.onboardingStage === "ATIVO_MANUTENCAO"
+                    ? "Aprovado ✓"
+                    : "Aguardando",
+                isCurrent: company.onboardingStage === "EM_HOMOLOGACAO",
+                isDone: company.onboardingStage === "ATIVO_MANUTENCAO",
+              },
+              {
+                step: "4",
+                title: "Publicação & Suporte",
+                desc:
+                  company.onboardingStage === "ATIVO_MANUTENCAO"
+                    ? "No Ar ✓"
+                    : "Fase Final",
+                isCurrent: company.onboardingStage === "ATIVO_MANUTENCAO",
+                isDone: company.onboardingStage === "ATIVO_MANUTENCAO",
+              },
+            ].map((s) => (
+              <div
+                key={s.step}
+                className={`p-3.5 rounded-xl border transition-all ${
+                  s.isCurrent
+                    ? "bg-slate-800/90 border-sky-400 text-white shadow-md shadow-sky-950/50"
+                    : s.isDone
+                    ? "bg-slate-800/40 border-emerald-500/40 text-slate-200"
+                    : "bg-slate-800/20 border-slate-800 text-slate-400"
+                }`}
+              >
+                <div className="flex items-center justify-between mb-1.5">
+                  <span
+                    className={`text-[11px] font-black w-5 h-5 rounded-full flex items-center justify-center ${
+                      s.isCurrent
+                        ? "bg-sky-400 text-slate-950"
+                        : s.isDone
+                        ? "bg-emerald-500 text-slate-950"
+                        : "bg-slate-700 text-slate-400"
+                    }`}
+                  >
+                    {s.isDone ? "✓" : s.step}
+                  </span>
+                  <span
+                    className={`text-[10px] font-bold uppercase tracking-wider ${
+                      s.isCurrent
+                        ? "text-sky-300"
+                        : s.isDone
+                        ? "text-emerald-400"
+                        : "text-slate-500"
+                    }`}
+                  >
+                    {s.desc}
+                  </span>
+                </div>
+                <h3 className="font-bold text-xs sm:text-sm text-slate-100">
+                  {s.title}
+                </h3>
+              </div>
+            ))}
+          </div>
+
+          {/* Notificação / Chamada para Ação */}
+          {(!company.briefing || company.briefing.status === "DRAFT") && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-xs flex items-center justify-between gap-3">
+              <div className="flex items-center space-x-2">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  <strong>Atenção:</strong> O briefing do seu projeto ainda não foi enviado. Preencha agora para agilizarmos a criação do seu site.
+                </span>
+              </div>
+              <Link
+                href="/portal/briefing"
+                className="font-bold underline text-amber-300 hover:text-amber-100 shrink-0"
+              >
+                Preencher agora →
+              </Link>
+            </div>
+          )}
+
+          {company.briefing?.status === "SUBMITTED" && (
+            <div className="p-3.5 rounded-xl bg-purple-500/10 border border-purple-500/30 text-purple-200 text-xs flex items-center space-x-2">
+              <Clock className="w-4 h-4 text-purple-400 shrink-0" />
+              <span>
+                <strong>Briefing em Análise:</strong> Nossa equipe está revisando suas informações para montar a estrutura e layout do seu site.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Grid: Métricas e Dados da Assinatura */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
