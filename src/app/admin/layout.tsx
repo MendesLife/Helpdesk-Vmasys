@@ -14,6 +14,7 @@ import {
   Headphones,
   ExternalLink,
   Mail,
+  Package,
 } from "lucide-react";
 
 export default async function AdminLayout({
@@ -74,6 +75,16 @@ export default async function AdminLayout({
               <Building2 className="w-4 h-4 text-slate-400" />
               <span>Clientes & Sites</span>
             </Link>
+
+            {isAdmin && (
+              <Link
+                href="/admin/planos"
+                className="flex items-center space-x-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors"
+              >
+                <Package className="w-4 h-4 text-slate-400" />
+                <span>Planos & Preços</span>
+              </Link>
+            )}
 
             {isAdmin && (
               <Link

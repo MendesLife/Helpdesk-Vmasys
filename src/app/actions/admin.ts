@@ -19,6 +19,16 @@ export async function createCompanyAction(formData: FormData) {
   const siteName = formData.get("siteName")?.toString().trim() || "Site Principal";
   const domainUrl = formData.get("domainUrl")?.toString().trim();
 
+  // Dados Financeiros & Contrato
+  const contractStartDateRaw = formData.get("contractStartDate")?.toString();
+  const contractStartDate = contractStartDateRaw ? new Date(contractStartDateRaw) : null;
+  const billingDayRaw = formData.get("billingDay")?.toString();
+  const billingDay = billingDayRaw ? parseInt(billingDayRaw, 10) : null;
+  const customPriceRaw = formData.get("customPrice")?.toString().replace(",", ".");
+  const customPrice = customPriceRaw ? parseFloat(customPriceRaw) : null;
+  const paymentMethod = formData.get("paymentMethod")?.toString() || "PIX";
+  const financialStatus = formData.get("financialStatus")?.toString() || "EM_DIA";
+
   if (!name) return { error: "Nome da empresa é obrigatório." };
   if (!domainUrl) return { error: "URL do site principal é obrigatória." };
 
@@ -29,6 +39,11 @@ export async function createCompanyAction(formData: FormData) {
         document: document || null,
         planId: planId || null,
         notes: notes || null,
+        contractStartDate,
+        billingDay,
+        customPrice: isNaN(customPrice as any) ? null : customPrice,
+        paymentMethod,
+        financialStatus,
         sites: {
           create: {
             name: siteName,
@@ -215,6 +230,16 @@ export async function updateCompanyAction(formData: FormData) {
   const status = formData.get("status")?.toString() || "ACTIVE";
   const notes = formData.get("notes")?.toString().trim() || null;
 
+  // Dados Financeiros & Contrato
+  const contractStartDateRaw = formData.get("contractStartDate")?.toString();
+  const contractStartDate = contractStartDateRaw ? new Date(contractStartDateRaw) : null;
+  const billingDayRaw = formData.get("billingDay")?.toString();
+  const billingDay = billingDayRaw ? parseInt(billingDayRaw, 10) : null;
+  const customPriceRaw = formData.get("customPrice")?.toString().replace(",", ".");
+  const customPrice = customPriceRaw ? parseFloat(customPriceRaw) : null;
+  const paymentMethod = formData.get("paymentMethod")?.toString() || "PIX";
+  const financialStatus = formData.get("financialStatus")?.toString() || "EM_DIA";
+
   if (!companyId || !name) {
     return { error: "Identificador e nome da empresa são obrigatórios." };
   }
@@ -228,6 +253,11 @@ export async function updateCompanyAction(formData: FormData) {
         planId: planId || null,
         status,
         notes,
+        contractStartDate,
+        billingDay,
+        customPrice: isNaN(customPrice as any) ? null : customPrice,
+        paymentMethod,
+        financialStatus,
       },
     });
 

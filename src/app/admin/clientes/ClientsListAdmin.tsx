@@ -21,6 +21,10 @@ import {
   Trash2,
   AlertTriangle,
   CheckCircle2,
+  Calendar,
+  CreditCard,
+  DollarSign,
+  Package,
 } from "lucide-react";
 
 interface CompanyItem {
@@ -30,7 +34,12 @@ interface CompanyItem {
   status: string;
   notes?: string | null;
   planId?: string | null;
-  plan: { id: string; name: string } | null;
+  plan: { id: string; name: string; price?: number; maxSites?: number } | null;
+  contractStartDate?: string | Date | null;
+  billingDay?: number | null;
+  customPrice?: number | null;
+  paymentMethod?: string | null;
+  financialStatus?: string | null;
   sites: { id: string; name: string; domainUrl: string }[];
   users: { id: string; name: string; email: string; isActive?: boolean }[];
   tickets: { id: string; status: string }[];
@@ -41,7 +50,7 @@ export default function ClientsListAdmin({
   plans,
 }: {
   companies: CompanyItem[];
-  plans: { id: string; name: string; maxSites: number }[];
+  plans: { id: string; name: string; maxSites: number; price?: number }[];
 }) {
   const router = useRouter();
   const [showModal, setShowModal] = useState(false);
@@ -55,6 +64,14 @@ export default function ClientsListAdmin({
   const [siteName, setSiteName] = useState("Site Principal");
   const [domainUrl, setDomainUrl] = useState("");
   const [notes, setNotes] = useState("");
+  // Novos Campos Financeiros
+  const [contractStartDate, setContractStartDate] = useState(
+    new Date().toISOString().split("T")[0]
+  );
+  const [billingDay, setBillingDay] = useState("10");
+  const [customPrice, setCustomPrice] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("PIX");
+  const [financialStatus, setFinancialStatus] = useState("EM_DIA");
 
   // State - Editar
   const [editingCompany, setEditingCompany] = useState<CompanyItem | null>(null);
@@ -63,6 +80,11 @@ export default function ClientsListAdmin({
   const [editPlanId, setEditPlanId] = useState("");
   const [editStatus, setEditStatus] = useState("ACTIVE");
   const [editNotes, setEditNotes] = useState("");
+  const [editContractStartDate, setEditContractStartDate] = useState("");
+  const [editBillingDay, setEditBillingDay] = useState("10");
+  const [editCustomPrice, setEditCustomPrice] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState("PIX");
+  const [editFinancialStatus, setEditFinancialStatus] = useState("EM_DIA");
   const [editError, setEditError] = useState<string | null>(null);
 
   // State - Excluir
@@ -80,6 +102,11 @@ export default function ClientsListAdmin({
     formData.append("siteName", siteName);
     formData.append("domainUrl", domainUrl);
     formData.append("notes", notes);
+    formData.append("contractStartDate", contractStartDate);
+    formData.append("billingDay", billingDay);
+    formData.append("customPrice", customPrice);
+    formData.append("paymentMethod", paymentMethod);
+    formData.append("financialStatus", financialStatus);
 
     startTransition(async () => {
       const res = await createCompanyAction(formData);
@@ -91,6 +118,7 @@ export default function ClientsListAdmin({
         setDocument("");
         setDomainUrl("");
         setNotes("");
+        setCustomPrice("");
         router.refresh();
       }
     });
@@ -103,6 +131,17 @@ export default function ClientsListAdmin({
     setEditPlanId(c.plan?.id || plans[0]?.id || "");
     setEditStatus(c.status || "ACTIVE");
     setEditNotes(c.notes || "");
+    setEditContractStartDate(
+      c.contractStartDate
+        ? new Date(c.contractStartDate).toISOString().split("T")[0]
+        : ""
+    );
+    setEditBillingDay(c.billingDay ? c.billingDay.toString() : "10");
+    setEditCustomPrice(
+      c.customPrice ? c.customPrice.toFixed(2).replace(".", ",") : ""
+    );
+    setEditPaymentMethod(c.paymentMethod || "PIX");
+    setEditFinancialStatus(c.financialStatus || "EM_DIA");
     setEditError(null);
   };
 
@@ -118,6 +157,11 @@ export default function ClientsListAdmin({
     formData.append("planId", editPlanId);
     formData.append("status", editStatus);
     formData.append("notes", editNotes);
+    formData.append("contractStartDate", editContractStartDate);
+    formData.append("billingDay", editBillingDay);
+    formData.append("customPrice", editCustomPrice);
+    formData.append("paymentMethod", editPaymentMethod);
+    formData.append("financialStatus", editFinancialStatus);
 
     startTransition(async () => {
       const res = await updateCompanyAction(formData);
@@ -143,6 +187,45 @@ export default function ClientsListAdmin({
         router.refresh();
       }
     });
+  };
+
+  const formatCurrency = (val?: number | null) => {
+    if (val === undefined || val === null) return null;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(val);
+  };
+
+  const getFinancialBadge = (status?: string | null) => {
+    switch (status) {
+      case "EM_DIA":
+        return (
+          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/80 px-2 py-0.5 rounded-md">
+            Em dia
+          </span>
+        );
+      case "PENDENTE":
+        return (
+          <span className="text-[10px] font-semibold text-amber-700 bg-amber-50 border border-amber-200/80 px-2 py-0.5 rounded-md">
+            Pagto Pendente
+          </span>
+        );
+      case "ATRASADO":
+        return (
+          <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200/80 px-2 py-0.5 rounded-md">
+            Em Atraso
+          </span>
+        );
+      case "ISENTO":
+        return (
+          <span className="text-[10px] font-semibold text-slate-700 bg-slate-50 border border-slate-200/80 px-2 py-0.5 rounded-md">
+            Isento
+          </span>
+        );
+      default:
+        return null;
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -182,18 +265,28 @@ export default function ClientsListAdmin({
             Gestão de Empresas Clientes
           </h1>
           <p className="text-sm text-slate-500 mt-0.5">
-            Cadastre, edite ou gerencie o status e acesso das empresas assinantes
+            Cadastre, edite ou gerencie o status, dados contratuais e acesso dos clientes
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setShowModal(true)}
-          className="inline-flex items-center px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors self-start sm:self-auto"
-        >
-          <PlusCircle className="w-4 h-4 mr-1.5" />
-          <span>+ Cadastrar Empresa</span>
-        </button>
+        <div className="flex items-center space-x-2">
+          <Link
+            href="/admin/planos"
+            className="inline-flex items-center px-3.5 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-xs shadow-xs transition-colors"
+          >
+            <Package className="w-4 h-4 mr-1.5 text-indigo-600" />
+            <span>Gerenciar Planos</span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setShowModal(true)}
+            className="inline-flex items-center px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs shadow-xs transition-colors self-start sm:self-auto"
+          >
+            <PlusCircle className="w-4 h-4 mr-1.5" />
+            <span>+ Cadastrar Empresa</span>
+          </button>
+        </div>
       </div>
 
       {/* Grid de Empresas */}
@@ -203,6 +296,12 @@ export default function ClientsListAdmin({
             (t) => t.status !== "CONCLUIDO" && t.status !== "CANCELADO"
           ).length;
 
+          const displayPrice = c.customPrice !== null && c.customPrice !== undefined
+            ? formatCurrency(c.customPrice)
+            : c.plan?.price !== undefined
+            ? formatCurrency(c.plan.price)
+            : null;
+
           return (
             <div
               key={c.id}
@@ -211,9 +310,9 @@ export default function ClientsListAdmin({
               <div>
                 <div className="flex items-center justify-between mb-3">
                   <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
-                    {c.plan?.name || "Plano Padrão"}
+                    {c.plan?.name || "Sem Plano"}
                   </span>
-                  
+
                   <div className="flex items-center space-x-1.5">
                     {getStatusBadge(c.status)}
                     <button
@@ -244,8 +343,30 @@ export default function ClientsListAdmin({
                   </p>
                 )}
 
+                {/* Bloco de Contrato & Faturamento */}
+                <div className="mt-3 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-800">
+                      {displayPrice ? `${displayPrice}/mês` : "Mensalidade a definir"}
+                    </span>
+                    {getFinancialBadge(c.financialStatus)}
+                  </div>
+
+                  <div className="flex items-center justify-between text-[11px] text-slate-500">
+                    <span className="flex items-center">
+                      <Calendar className="w-3 h-3 mr-1 text-slate-400" />
+                      Vencimento: dia <strong>{c.billingDay || 10}</strong>
+                    </span>
+                    {c.paymentMethod && (
+                      <span className="font-semibold text-slate-600">
+                        {c.paymentMethod}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
                 {/* Métricas da Empresa */}
-                <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-3 gap-2 text-center">
+                <div className="mt-3 pt-3 border-t border-slate-100 grid grid-cols-3 gap-2 text-center">
                   <div className="p-2 rounded-lg bg-slate-50">
                     <span className="text-xs text-slate-400 block font-medium">
                       Sites
@@ -275,7 +396,7 @@ export default function ClientsListAdmin({
                 </div>
 
                 {/* Sites List */}
-                <div className="mt-4 space-y-1.5">
+                <div className="mt-3 space-y-1.5">
                   <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
                     Sites Monitorados:
                   </span>
@@ -302,7 +423,7 @@ export default function ClientsListAdmin({
                 </div>
               </div>
 
-              <div className="mt-6 pt-4 border-t border-slate-100 flex items-center gap-2">
+              <div className="mt-5 pt-3 border-t border-slate-100 flex items-center gap-2">
                 <Link
                   href={`/admin/clientes/${c.id}`}
                   className="flex-1 flex items-center justify-center py-2 px-3 rounded-xl bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-700 text-xs font-semibold transition-colors"
@@ -319,7 +440,7 @@ export default function ClientsListAdmin({
       {/* Modal de Criação de Empresa */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <Building2 className="w-5 h-5 text-indigo-600" />
@@ -380,13 +501,98 @@ export default function ClientsListAdmin({
                   >
                     {plans.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} (Até {p.maxSites} sites)
+                        {p.name} {p.price ? `(R$ ${p.price}/mês)` : ""}
                       </option>
                     ))}
                   </select>
                 </div>
               </div>
 
+              {/* Seção Contratual & Financeira */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <span className="font-bold text-slate-800 block text-xs flex items-center">
+                  <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  Contrato & Condições de Pagamento
+                </span>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Início da Assinatura
+                    </label>
+                    <input
+                      type="date"
+                      value={contractStartDate}
+                      onChange={(e) => setContractStartDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Dia de Vencimento
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={billingDay}
+                      onChange={(e) => setBillingDay(e.target.value)}
+                      placeholder="10"
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Mensalidade Customizada
+                    </label>
+                    <input
+                      type="text"
+                      value={customPrice}
+                      onChange={(e) => setCustomPrice(e.target.value)}
+                      placeholder="Padrão do plano"
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Forma de Cobrança
+                    </label>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    >
+                      <option value="PIX">PIX</option>
+                      <option value="BOLETO">Boleto Bancário</option>
+                      <option value="CARTAO">Cartão de Crédito</option>
+                      <option value="TRANSFERENCIA">Transferência</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Situação Financeira
+                    </label>
+                    <select
+                      value={financialStatus}
+                      onChange={(e) => setFinancialStatus(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    >
+                      <option value="EM_DIA">Em Dia</option>
+                      <option value="PENDENTE">Pendente</option>
+                      <option value="ATRASADO">Em Atraso</option>
+                      <option value="ISENTO">Isento</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Site Principal */}
               <div className="border-t border-slate-100 pt-3">
                 <span className="font-bold text-slate-800 block mb-2">
                   Site Principal da Empresa
@@ -458,7 +664,7 @@ export default function ClientsListAdmin({
       {/* Modal de Edição de Empresa */}
       {editingCompany && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <Pencil className="w-5 h-5 text-indigo-600" />
@@ -535,10 +741,94 @@ export default function ClientsListAdmin({
                   <option value="">Nenhum plano específico</option>
                   {plans.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} (Até {p.maxSites} sites)
+                      {p.name} {p.price ? `(R$ ${p.price}/mês)` : ""}
                     </option>
                   ))}
                 </select>
+              </div>
+
+              {/* Seção Contratual & Financeira no Edit */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <span className="font-bold text-slate-800 block text-xs flex items-center">
+                  <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  Contrato & Condições de Pagamento
+                </span>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Início da Assinatura
+                    </label>
+                    <input
+                      type="date"
+                      value={editContractStartDate}
+                      onChange={(e) => setEditContractStartDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Dia de Vencimento
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={editBillingDay}
+                      onChange={(e) => setEditBillingDay(e.target.value)}
+                      placeholder="10"
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Mensalidade Negociada R$
+                    </label>
+                    <input
+                      type="text"
+                      value={editCustomPrice}
+                      onChange={(e) => setEditCustomPrice(e.target.value)}
+                      placeholder="Valor personalizado"
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Forma de Cobrança
+                    </label>
+                    <select
+                      value={editPaymentMethod}
+                      onChange={(e) => setEditPaymentMethod(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    >
+                      <option value="PIX">PIX</option>
+                      <option value="BOLETO">Boleto Bancário</option>
+                      <option value="CARTAO">Cartão de Crédito</option>
+                      <option value="TRANSFERENCIA">Transferência</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Situação Financeira
+                    </label>
+                    <select
+                      value={editFinancialStatus}
+                      onChange={(e) => setEditFinancialStatus(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    >
+                      <option value="EM_DIA">Em Dia</option>
+                      <option value="PENDENTE">Pendente</option>
+                      <option value="ATRASADO">Em Atraso</option>
+                      <option value="ISENTO">Isento</option>
+                    </select>
+                  </div>
+                </div>
               </div>
 
               <div>

@@ -35,6 +35,12 @@ import {
   X,
   Lock,
   Unlock,
+  Calendar,
+  CreditCard,
+  DollarSign,
+  Zap,
+  FileText,
+  Package,
 } from "lucide-react";
 
 export default function CompanyDetailsAdmin({
@@ -44,7 +50,7 @@ export default function CompanyDetailsAdmin({
 }: {
   company: any;
   invitations: any[];
-  plans?: { id: string; name: string; maxSites: number }[];
+  plans?: { id: string; name: string; maxSites: number; price?: number }[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -67,6 +73,23 @@ export default function CompanyDetailsAdmin({
   const [editPlanId, setEditPlanId] = useState(company.planId || company.plan?.id || "");
   const [editStatus, setEditStatus] = useState(company.status || "ACTIVE");
   const [editNotes, setEditNotes] = useState(company.notes || "");
+  const [editContractStartDate, setEditContractStartDate] = useState(
+    company.contractStartDate
+      ? new Date(company.contractStartDate).toISOString().split("T")[0]
+      : ""
+  );
+  const [editBillingDay, setEditBillingDay] = useState(
+    company.billingDay ? company.billingDay.toString() : "10"
+  );
+  const [editCustomPrice, setEditCustomPrice] = useState(
+    company.customPrice ? company.customPrice.toFixed(2).replace(".", ",") : ""
+  );
+  const [editPaymentMethod, setEditPaymentMethod] = useState(
+    company.paymentMethod || "PIX"
+  );
+  const [editFinancialStatus, setEditFinancialStatus] = useState(
+    company.financialStatus || "EM_DIA"
+  );
   const [editError, setEditError] = useState<string | null>(null);
 
   // Delete Company State
@@ -130,6 +153,11 @@ export default function CompanyDetailsAdmin({
     formData.append("planId", editPlanId);
     formData.append("status", editStatus);
     formData.append("notes", editNotes);
+    formData.append("contractStartDate", editContractStartDate);
+    formData.append("billingDay", editBillingDay);
+    formData.append("customPrice", editCustomPrice);
+    formData.append("paymentMethod", editPaymentMethod);
+    formData.append("financialStatus", editFinancialStatus);
 
     startTransition(async () => {
       const res = await updateCompanyAction(formData);
@@ -208,6 +236,14 @@ export default function CompanyDetailsAdmin({
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const formatCurrency = (val?: number | null) => {
+    if (val === undefined || val === null) return null;
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(val);
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "ACTIVE":
@@ -237,6 +273,43 @@ export default function CompanyDetailsAdmin({
     }
   };
 
+  const getFinancialBadge = (status?: string | null) => {
+    switch (status) {
+      case "EM_DIA":
+        return (
+          <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+            Em Dia
+          </span>
+        );
+      case "PENDENTE":
+        return (
+          <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2.5 py-0.5 rounded-full">
+            Pagamento Pendente
+          </span>
+        );
+      case "ATRASADO":
+        return (
+          <span className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2.5 py-0.5 rounded-full">
+            Em Atraso
+          </span>
+        );
+      case "ISENTO":
+        return (
+          <span className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 px-2.5 py-0.5 rounded-full">
+            Isento
+          </span>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const currentPrice = company.customPrice !== null && company.customPrice !== undefined
+    ? formatCurrency(company.customPrice)
+    : company.plan?.price !== undefined
+    ? formatCurrency(company.plan.price)
+    : null;
+
   return (
     <div className="space-y-6">
       {/* Toast Feedback */}
@@ -261,7 +334,7 @@ export default function CompanyDetailsAdmin({
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
-                {company.plan?.name || "Plano Padrão"}
+                {company.plan?.name || "Sem Plano"}
               </span>
               {getStatusBadge(company.status || "ACTIVE")}
             </div>
@@ -270,7 +343,7 @@ export default function CompanyDetailsAdmin({
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
               {company.document ? `CNPJ/CPF: ${company.document} • ` : ""}
-              Cliente desde{" "}
+              Cadastrado em{" "}
               {new Date(company.createdAt).toLocaleDateString("pt-BR")}
             </p>
           </div>
@@ -304,6 +377,81 @@ export default function CompanyDetailsAdmin({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Card de Faturamento e Condições Contratuais */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+          <div className="flex items-center space-x-2">
+            <DollarSign className="w-5 h-5 text-emerald-600" />
+            <h2 className="text-sm font-bold text-slate-900">
+              Contrato de Assinatura & Condições Financeiras
+            </h2>
+          </div>
+          {getFinancialBadge(company.financialStatus)}
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-xs text-slate-400 font-medium block">
+              Mensalidade Contratada
+            </span>
+            <span className="text-lg font-black text-slate-900 block mt-0.5">
+              {currentPrice ? `${currentPrice}` : "A definir"}
+            </span>
+            <span className="text-[11px] text-slate-500">
+              {company.customPrice ? "Valor negociado" : "Valor padrão do plano"}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-xs text-slate-400 font-medium block">
+              Dia de Vencimento
+            </span>
+            <span className="text-lg font-black text-slate-900 block mt-0.5">
+              Todo dia {company.billingDay || 10}
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Forma: {company.paymentMethod || "PIX"}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-xs text-slate-400 font-medium block">
+              Início do Contrato
+            </span>
+            <span className="text-lg font-black text-slate-900 block mt-0.5">
+              {company.contractStartDate
+                ? new Date(company.contractStartDate).toLocaleDateString("pt-BR")
+                : "Não informado"}
+            </span>
+            <span className="text-[11px] text-slate-500">
+              Status: {company.status === "ACTIVE" ? "Ativo" : company.status}
+            </span>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100">
+            <span className="text-xs text-slate-400 font-medium block">
+              Limites do Plano
+            </span>
+            <div className="mt-1 space-y-0.5 text-[11px] text-slate-700 font-medium">
+              <p>• {company.plan?.maxSites || 1} site(s) inclusos</p>
+              <p>• {company.plan?.monthlyRequestsLimit ? `${company.plan.monthlyRequestsLimit} alt./mês` : "Alt. ilimitadas"}</p>
+              <p>• SLA até {company.plan?.slaHours || 48}h úteis</p>
+            </div>
+          </div>
+        </div>
+
+        {company.notes && (
+          <div className="mt-4 pt-3 border-t border-slate-100 text-xs">
+            <span className="font-bold text-slate-700 block mb-1">
+              Notas e Observações Internas:
+            </span>
+            <p className="text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 whitespace-pre-wrap">
+              {company.notes}
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Grid: Sites e Usuários */}
@@ -630,7 +778,7 @@ export default function CompanyDetailsAdmin({
       {/* Modal de Edição de Empresa */}
       {showEditModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
                 <Pencil className="w-5 h-5 text-indigo-600" />
@@ -708,12 +856,96 @@ export default function CompanyDetailsAdmin({
                     <option value="">Nenhum plano específico</option>
                     {plans.map((p) => (
                       <option key={p.id} value={p.id}>
-                        {p.name} (Até {p.maxSites} sites)
+                        {p.name} {p.price ? `(R$ ${p.price}/mês)` : ""}
                       </option>
                     ))}
                   </select>
                 </div>
               )}
+
+              {/* Seção Contratual & Financeira no Edit */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <span className="font-bold text-slate-800 block text-xs flex items-center">
+                  <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  Contrato & Condições de Pagamento
+                </span>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Início da Assinatura
+                    </label>
+                    <input
+                      type="date"
+                      value={editContractStartDate}
+                      onChange={(e) => setEditContractStartDate(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Dia de Vencimento
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={31}
+                      value={editBillingDay}
+                      onChange={(e) => setEditBillingDay(e.target.value)}
+                      placeholder="10"
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Mensalidade Negociada R$
+                    </label>
+                    <input
+                      type="text"
+                      value={editCustomPrice}
+                      onChange={(e) => setEditCustomPrice(e.target.value)}
+                      placeholder="Padrão do plano"
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Forma de Cobrança
+                    </label>
+                    <select
+                      value={editPaymentMethod}
+                      onChange={(e) => setEditPaymentMethod(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    >
+                      <option value="PIX">PIX</option>
+                      <option value="BOLETO">Boleto Bancário</option>
+                      <option value="CARTAO">Cartão de Crédito</option>
+                      <option value="TRANSFERENCIA">Transferência</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-medium text-slate-600 mb-1">
+                      Situação Financeira
+                    </label>
+                    <select
+                      value={editFinancialStatus}
+                      onChange={(e) => setEditFinancialStatus(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
+                    >
+                      <option value="EM_DIA">Em Dia</option>
+                      <option value="PENDENTE">Pendente</option>
+                      <option value="ATRASADO">Em Atraso</option>
+                      <option value="ISENTO">Isento</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">

@@ -8,29 +8,41 @@ datasource db {
 }
 
 model Plan {
-  id          String    @id @default(cuid())
-  name        String
-  description String?
-  maxSites    Int       @default(1)
-  companies   Company[]
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id                    String    @id @default(cuid())
+  name                  String
+  description           String?
+  price                 Float     @default(0) // Mensalidade em R$
+  maxSites              Int       @default(1) // Qtd de sites inclusos
+  monthlyRequestsLimit  Int?      // Limite de alterações mensais (null = ilimitado)
+  maxPages              Int?      // Limite de páginas por site (null = ilimitado)
+  slaHours              Int?      @default(48) // Prazo de SLA em horas úteis
+  features              String?   // Lista de recursos inclusos (separados por linha)
+  isActive              Boolean   @default(true)
+  companies             Company[]
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
 }
 
 model Company {
-  id          String        @id @default(cuid())
-  name        String
-  document    String?
-  status      String        @default("ACTIVE") // ACTIVE, SUSPENDED, CANCELLED
-  notes       String?
-  planId      String?
-  plan        Plan?         @relation(fields: [planId], references: [id], onDelete: SetNull)
-  sites       CompanySite[]
-  users       User[]
-  tickets     Ticket[]
-  invitations Invitation[]
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  name              String
+  document          String?
+  status            String        @default("ACTIVE") // ACTIVE, SUSPENDED, CANCELLED
+  notes             String?
+  planId            String?
+  plan              Plan?         @relation(fields: [planId], references: [id], onDelete: SetNull)
+  // Contrato e Dados Financeiros
+  contractStartDate DateTime?     // Data de início da assinatura
+  billingDay        Int?          // Dia do vencimento (1 a 31)
+  customPrice       Float?        // Valor da mensalidade se negociado individualmente
+  paymentMethod     String?       @default("PIX") // PIX, BOLETO, CARTAO, TRANSFERENCIA
+  financialStatus   String        @default("EM_DIA") // EM_DIA, PENDENTE, ATRASADO, ISENTO
+  sites             CompanySite[]
+  users             User[]
+  tickets           Ticket[]
+  invitations       Invitation[]
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 }
 
 model CompanySite {
