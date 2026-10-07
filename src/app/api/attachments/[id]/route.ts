@@ -46,9 +46,10 @@ export async function GET(request: NextRequest, { params }: Props) {
     }
   }
 
+  const defaultUploadDir = process.env.VERCEL ? "/tmp" : "./uploads";
   const uploadDir = path.resolve(
     process.cwd(),
-    process.env.UPLOAD_DIR || "./uploads"
+    process.env.UPLOAD_DIR || defaultUploadDir
   );
   const filePath = path.join(uploadDir, attachment.storedName);
 

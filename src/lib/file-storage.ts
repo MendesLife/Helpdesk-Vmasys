@@ -54,7 +54,8 @@ export async function saveUploadedFile(file: File): Promise<StoredFileInfo> {
     );
   }
 
-  const uploadDir = path.resolve(process.cwd(), process.env.UPLOAD_DIR || "./uploads");
+  const defaultUploadDir = process.env.VERCEL ? "/tmp" : "./uploads";
+  const uploadDir = path.resolve(process.cwd(), process.env.UPLOAD_DIR || defaultUploadDir);
   await fs.mkdir(uploadDir, { recursive: true });
 
   const randomHash = crypto.randomBytes(16).toString("hex");
