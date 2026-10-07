@@ -201,3 +201,221 @@ export async function sendTestEmailAction(toEmail: string) {
     actionUrl: `${appUrl}/admin/configuracoes/email`,
   });
 }
+
+export async function updateCompanyAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { error: "Apenas Administradores podem editar empresas." };
+  }
+
+  const companyId = formData.get("companyId")?.toString();
+  const name = formData.get("name")?.toString().trim();
+  const document = formData.get("document")?.toString().trim();
+  const planId = formData.get("planId")?.toString() || null;
+  const status = formData.get("status")?.toString() || "ACTIVE";
+  const notes = formData.get("notes")?.toString().trim() || null;
+
+  if (!companyId || !name) {
+    return { error: "Identificador e nome da empresa são obrigatórios." };
+  }
+
+  try {
+    await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        name,
+        document: document || null,
+        planId: planId || null,
+        status,
+        notes,
+      },
+    });
+
+    revalidatePath("/admin/clientes");
+    revalidatePath(`/admin/clientes/${companyId}`);
+    return { success: true, message: "Empresa atualizada com sucesso!" };
+  } catch (err: any) {
+    console.error("Erro ao atualizar empresa:", err);
+    return { error: "Erro ao atualizar dados da empresa." };
+  }
+}
+
+export async function deleteCompanyAction(companyId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { error: "Apenas o Administrador pode excluir empresas." };
+  }
+
+  if (!companyId) return { error: "ID da empresa não informado." };
+
+  try {
+    // 1. Desativa e desvincula os usuários clientes vinculados a esta empresa
+    await prisma.user.updateMany({
+      where: { companyId, role: "CLIENT" },
+      data: { isActive: false, companyId: null },
+    });
+
+    // 2. Exclui a empresa (cascateia sites, tickets, convites automaticamente pelo banco)
+    await prisma.company.delete({
+      where: { id: companyId },
+    });
+
+    revalidatePath("/admin/clientes");
+    revalidatePath("/admin/dashboard");
+    revalidatePath("/admin/solicitacoes");
+
+    return { success: true, message: "Empresa excluída com sucesso!" };
+  } catch (err: any) {
+    console.error("Erro ao excluir empresa:", err);
+    return { error: "Erro ao excluir empresa: " + (err.message || "Falha interna.") };
+  }
+}
+
+export async function toggleUserStatusAction(userId: string) {
+  const session = await getSession();
+  if (!session || (session.role !== "ADMIN" && session.role !== "EQUIPE")) {
+    return { error: "Não autorizado." };
+  }
+
+  if (session.userId === userId) {
+    return { error: "Você não pode desativar seu próprio acesso enquanto logado." };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (!user) return { error: "Usuário não encontrado." };
+
+    if (session.role === "EQUIPE" && user.role !== "CLIENT") {
+      return { error: "Apenas Administradores podem gerenciar membros da equipe." };
+    }
+
+    const updated = await prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !user.isActive },
+    });
+
+    if (user.companyId) revalidatePath(`/admin/clientes/${user.companyId}`);
+    revalidatePath("/admin/clientes");
+    revalidatePath("/admin/equipe");
+
+    return {
+      success: true,
+      isActive: updated.isActive,
+      message: updated.isActive
+        ? `Acesso de ${updated.name} reativado!`
+        : `Acesso de ${updated.name} bloqueado!`,
+    };
+  } catch (err: any) {
+    console.error("Erro ao alterar status do usuário:", err);
+    return { error: "Erro ao atualizar status do usuário." };
+  }
+}
+
+export async function removeUserAccessAction(userId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { error: "Apenas Administradores podem remover acessos de usuários." };
+  }
+
+  if (session.userId === userId) {
+    return { error: "Você não pode remover seu próprio acesso." };
+  }
+
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        createdTickets: { select: { id: true }, take: 1 },
+        comments: { select: { id: true }, take: 1 },
+      },
+    });
+
+    if (!user) return { error: "Usuário não encontrado." };
+
+    const companyId = user.companyId;
+
+    if (user.createdTickets.length > 0 || user.comments.length > 0) {
+      await prisma.user.update({
+        where: { id: userId },
+        data: {
+          companyId: null,
+          isActive: false,
+        },
+      });
+    } else {
+      await prisma.user.delete({ where: { id: userId } });
+    }
+
+    if (companyId) revalidatePath(`/admin/clientes/${companyId}`);
+    revalidatePath("/admin/clientes");
+    revalidatePath("/admin/equipe");
+
+    return { success: true, message: `Acesso de ${user.name} removido com sucesso.` };
+  } catch (err: any) {
+    console.error("Erro ao remover usuário:", err);
+    return { error: "Erro ao remover acesso do usuário." };
+  }
+}
+
+export async function deleteInvitationAction(invitationId: string) {
+  const session = await getSession();
+  if (!session || (session.role !== "ADMIN" && session.role !== "EQUIPE")) {
+    return { error: "Não autorizado." };
+  }
+
+  try {
+    const inv = await prisma.invitation.findUnique({ where: { id: invitationId } });
+    if (!inv) return { error: "Convite não encontrado." };
+
+    const companyId = inv.companyId;
+    await prisma.invitation.delete({ where: { id: invitationId } });
+
+    if (companyId) revalidatePath(`/admin/clientes/${companyId}`);
+    revalidatePath("/admin/equipe");
+
+    return { success: true, message: "Convite cancelado com sucesso." };
+  } catch (err: any) {
+    console.error("Erro ao cancelar convite:", err);
+    return { error: "Erro ao cancelar convite." };
+  }
+}
+
+export async function updateTeamMemberAction(formData: FormData) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { error: "Apenas Administradores podem editar membros da equipe." };
+  }
+
+  const userId = formData.get("userId")?.toString();
+  const name = formData.get("name")?.toString().trim();
+  const email = formData.get("email")?.toString().trim().toLowerCase();
+  const role = (formData.get("role")?.toString() || "EQUIPE") as "EQUIPE" | "ADMIN";
+  const password = formData.get("password")?.toString();
+
+  if (!userId || !name || !email) {
+    return { error: "Preencha todos os campos obrigatórios." };
+  }
+
+  try {
+    const dataToUpdate: any = {
+      name,
+      email,
+      role,
+    };
+
+    if (password && password.trim().length >= 6) {
+      dataToUpdate.passwordHash = await hashPassword(password.trim());
+    }
+
+    await prisma.user.update({
+      where: { id: userId },
+      data: dataToUpdate,
+    });
+
+    revalidatePath("/admin/equipe");
+    return { success: true, message: "Membro da equipe atualizado com sucesso!" };
+  } catch (err: any) {
+    console.error("Erro ao atualizar membro da equipe:", err);
+    return { error: "Erro ao atualizar membro da equipe." };
+  }
+}

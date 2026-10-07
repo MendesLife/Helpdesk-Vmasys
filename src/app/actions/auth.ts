@@ -44,7 +44,26 @@ export async function loginAction(
     });
 
     if (!user || !user.isActive) {
-      return { error: "Credenciais inválidas ou conta inativa." };
+      return { error: "Credenciais inválidas ou acesso desativado pelo administrador." };
+    }
+
+    // Se for perfil de cliente, valida o status contratual da empresa
+    if (user.role === "CLIENT") {
+      if (!user.companyId || !user.company) {
+        return { error: "Usuário não possui uma empresa vinculada ativa." };
+      }
+      if (user.company.status === "SUSPENDED") {
+        return {
+          error:
+            "O acesso da sua empresa está temporariamente suspenso. Entre em contato com a equipe VMASYS.",
+        };
+      }
+      if (user.company.status === "CANCELLED") {
+        return {
+          error:
+            "O contrato da sua empresa foi cancelado. Entre em contato com a equipe VMASYS.",
+        };
+      }
     }
 
     // Proteção contra ataques de força bruta

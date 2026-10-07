@@ -5,6 +5,11 @@ import Link from "next/link";
 import {
   addCompanySiteAction,
   createInvitationAction,
+  updateCompanyAction,
+  deleteCompanyAction,
+  toggleUserStatusAction,
+  removeUserAccessAction,
+  deleteInvitationAction,
 } from "@/app/actions/admin";
 import { useRouter } from "next/navigation";
 import {
@@ -22,14 +27,24 @@ import {
   ChevronRight,
   ShieldCheck,
   Clock,
+  Pencil,
+  Trash2,
+  UserX,
+  UserCheck,
+  AlertTriangle,
+  X,
+  Lock,
+  Unlock,
 } from "lucide-react";
 
 export default function CompanyDetailsAdmin({
   company,
   invitations,
+  plans,
 }: {
   company: any;
   invitations: any[];
+  plans?: { id: string; name: string; maxSites: number }[];
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
@@ -44,6 +59,22 @@ export default function CompanyDetailsAdmin({
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [inviteError, setInviteError] = useState<string | null>(null);
+
+  // Edit Company State
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editName, setEditName] = useState(company.name);
+  const [editDocument, setEditDocument] = useState(company.document || "");
+  const [editPlanId, setEditPlanId] = useState(company.planId || company.plan?.id || "");
+  const [editStatus, setEditStatus] = useState(company.status || "ACTIVE");
+  const [editNotes, setEditNotes] = useState(company.notes || "");
+  const [editError, setEditError] = useState<string | null>(null);
+
+  // Delete Company State
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Feedback State
+  const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
   const handleAddSite = (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,14 +119,134 @@ export default function CompanyDetailsAdmin({
     });
   };
 
+  const handleSaveEdit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setEditError(null);
+
+    const formData = new FormData();
+    formData.append("companyId", company.id);
+    formData.append("name", editName);
+    formData.append("document", editDocument);
+    formData.append("planId", editPlanId);
+    formData.append("status", editStatus);
+    formData.append("notes", editNotes);
+
+    startTransition(async () => {
+      const res = await updateCompanyAction(formData);
+      if (res?.error) {
+        setEditError(res.error);
+      } else {
+        setShowEditModal(false);
+        setActionFeedback("Dados da empresa atualizados com sucesso!");
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      }
+    });
+  };
+
+  const handleDeleteCompany = () => {
+    setDeleteError(null);
+
+    startTransition(async () => {
+      const res = await deleteCompanyAction(company.id);
+      if (res?.error) {
+        setDeleteError(res.error);
+      } else {
+        router.push("/admin/clientes");
+      }
+    });
+  };
+
+  const handleToggleUserStatus = (userId: string, currentActive: boolean) => {
+    startTransition(async () => {
+      const res = await toggleUserStatusAction(userId);
+      if (res?.message) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else if (res?.error) {
+        alert(res.error);
+      }
+    });
+  };
+
+  const handleRemoveUserAccess = (userId: string, userName: string) => {
+    if (!confirm(`Tem certeza que deseja remover o acesso de ${userName}? O usuário não poderá mais acessar o portal.`)) {
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await removeUserAccessAction(userId);
+      if (res?.message) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else if (res?.error) {
+        alert(res.error);
+      }
+    });
+  };
+
+  const handleDeleteInvitation = (invitationId: string) => {
+    if (!confirm("Deseja realmente cancelar este convite pendente?")) return;
+
+    startTransition(async () => {
+      const res = await deleteInvitationAction(invitationId);
+      if (res?.message) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else if (res?.error) {
+        alert(res.error);
+      }
+    });
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "ACTIVE":
+        return (
+          <span className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+            Ativo
+          </span>
+        );
+      case "SUSPENDED":
+        return (
+          <span className="text-xs font-semibold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+            Suspenso
+          </span>
+        );
+      case "CANCELLED":
+        return (
+          <span className="text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+            Cancelado
+          </span>
+        );
+      default:
+        return (
+          <span className="text-xs font-semibold text-slate-700 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
+            {status}
+          </span>
+        );
+    }
+  };
+
   return (
     <div className="space-y-6">
+      {/* Toast Feedback */}
+      {actionFeedback && (
+        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-xl text-xs flex items-center space-x-2 border border-slate-700 animate-in fade-in slide-in-from-top-2">
+          <CheckCircle className="w-4 h-4 text-emerald-400" />
+          <span>{actionFeedback}</span>
+        </div>
+      )}
+
       {/* Voltar e Título */}
       <div>
         <Link
@@ -106,15 +257,13 @@ export default function CompanyDetailsAdmin({
           Voltar para lista de empresas
         </Link>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
           <div>
             <div className="flex items-center space-x-2">
               <span className="text-xs font-bold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">
-                {company.plan?.name || "Plano Ativo"}
+                {company.plan?.name || "Plano Padrão"}
               </span>
-              <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                Ativo
-              </span>
+              {getStatusBadge(company.status || "ACTIVE")}
             </div>
             <h1 className="text-2xl font-bold text-slate-900 mt-1">
               {company.name}
@@ -126,13 +275,33 @@ export default function CompanyDetailsAdmin({
             </p>
           </div>
 
-          <div className="text-right">
-            <span className="text-xs text-slate-400 block font-medium">
-              Chamados Totais
-            </span>
-            <span className="text-2xl font-extrabold text-slate-900">
-              {company.tickets.length}
-            </span>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setShowEditModal(true)}
+              className="inline-flex items-center px-3 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold text-xs transition-colors"
+            >
+              <Pencil className="w-3.5 h-3.5 mr-1.5 text-indigo-600" />
+              <span>Editar Empresa</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowDeleteModal(true)}
+              className="inline-flex items-center px-3 py-2 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-semibold text-xs transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1.5 text-rose-600" />
+              <span>Excluir Empresa</span>
+            </button>
+
+            <div className="ml-2 pl-3 border-l border-slate-200 text-right">
+              <span className="text-[11px] text-slate-400 block font-medium">
+                Chamados Totais
+              </span>
+              <span className="text-xl font-extrabold text-slate-900">
+                {company.tickets.length}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -148,36 +317,40 @@ export default function CompanyDetailsAdmin({
             </h2>
           </div>
 
-          <ul className="space-y-2">
-            {company.sites.map((site: any) => (
-              <li
-                key={site.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs"
-              >
-                <div>
-                  <div className="flex items-center space-x-1.5">
-                    <span className="font-bold text-slate-800">
-                      {site.name}
-                    </span>
-                    {site.isPrimary && (
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-semibold">
-                        Principal
+          {company.sites.length === 0 ? (
+            <p className="text-xs text-slate-400 py-2">Nenhum site cadastrado.</p>
+          ) : (
+            <ul className="space-y-2">
+              {company.sites.map((site: any) => (
+                <li
+                  key={site.id}
+                  className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs"
+                >
+                  <div>
+                    <div className="flex items-center space-x-1.5">
+                      <span className="font-bold text-slate-800">
+                        {site.name}
                       </span>
-                    )}
+                      {site.isPrimary && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-100 text-indigo-700 font-semibold">
+                          Principal
+                        </span>
+                      )}
+                    </div>
+                    <a
+                      href={site.domainUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-slate-500 hover:text-indigo-600 flex items-center mt-0.5"
+                    >
+                      <span>{site.domainUrl}</span>
+                      <ExternalLink className="w-3 h-3 ml-1" />
+                    </a>
                   </div>
-                  <a
-                    href={site.domainUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-slate-500 hover:text-indigo-600 flex items-center mt-0.5"
-                  >
-                    <span>{site.domainUrl}</span>
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </a>
-                </div>
-              </li>
-            ))}
-          </ul>
+                </li>
+              ))}
+            </ul>
+          )}
 
           {/* Form para Adicionar Site */}
           <form
@@ -215,7 +388,7 @@ export default function CompanyDetailsAdmin({
           </form>
         </div>
 
-        {/* Bloco 2: Usuários e Envio de Convites */}
+        {/* Bloco 2: Usuários e Gestão de Acessos */}
         <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <h2 className="text-sm font-bold text-slate-900 flex items-center">
@@ -226,22 +399,75 @@ export default function CompanyDetailsAdmin({
             </h2>
           </div>
 
-          <ul className="space-y-2">
-            {company.users.map((u: any) => (
-              <li
-                key={u.id}
-                className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs"
-              >
-                <div>
-                  <p className="font-bold text-slate-900">{u.name}</p>
-                  <p className="text-slate-500 text-[11px]">{u.email}</p>
-                </div>
-                <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded">
-                  Ativo
-                </span>
-              </li>
-            ))}
-          </ul>
+          {company.users.length === 0 ? (
+            <p className="text-xs text-slate-400 py-2">
+              Nenhum usuário com acesso cadastrado nesta empresa.
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {company.users.map((u: any) => {
+                const isActive = u.isActive !== false;
+                return (
+                  <li
+                    key={u.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-100 text-xs"
+                  >
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <p className="font-bold text-slate-900">{u.name}</p>
+                        {isActive ? (
+                          <span className="text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.2 rounded">
+                            Ativo
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
+                            Bloqueado
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-slate-500 text-[11px]">{u.email}</p>
+                    </div>
+
+                    <div className="flex items-center space-x-1.5">
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleToggleUserStatus(u.id, isActive)}
+                        title={isActive ? "Bloquear acesso" : "Reativar acesso"}
+                        className={`p-1.5 rounded-lg text-xs font-semibold flex items-center transition-colors ${
+                          isActive
+                            ? "text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200"
+                            : "text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200"
+                        }`}
+                      >
+                        {isActive ? (
+                          <>
+                            <Lock className="w-3 h-3 mr-1" />
+                            <span>Bloquear</span>
+                          </>
+                        ) : (
+                          <>
+                            <Unlock className="w-3 h-3 mr-1" />
+                            <span>Reativar</span>
+                          </>
+                        )}
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleRemoveUserAccess(u.id, u.name)}
+                        title="Remover acesso definitivamente"
+                        className="p-1.5 rounded-lg text-rose-600 hover:bg-rose-50 hover:text-rose-700 border border-rose-200 transition-colors"
+                      >
+                        <UserX className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
 
           {/* Form para Gerar Convite */}
           <form
@@ -311,6 +537,40 @@ export default function CompanyDetailsAdmin({
               </div>
             </div>
           )}
+
+          {/* Convites Pendentes */}
+          {invitations.length > 0 && (
+            <div className="pt-3 border-t border-slate-100">
+              <span className="font-bold text-slate-700 text-xs block mb-2">
+                Convites Pendentes ({invitations.filter((i) => !i.acceptedAt).length})
+              </span>
+              <div className="space-y-1.5">
+                {invitations
+                  .filter((i) => !i.acceptedAt)
+                  .map((inv) => (
+                    <div
+                      key={inv.id}
+                      className="flex items-center justify-between p-2 rounded-lg bg-amber-50/60 border border-amber-200/60 text-xs"
+                    >
+                      <div className="truncate mr-2">
+                        <span className="font-medium text-slate-800">{inv.email}</span>
+                        <span className="text-[10px] text-amber-700 block">
+                          Expira em {new Date(inv.expiresAt).toLocaleDateString("pt-BR")}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => handleDeleteInvitation(inv.id)}
+                        className="text-[11px] text-rose-600 hover:text-rose-800 hover:underline shrink-0"
+                      >
+                        Cancelar
+                      </button>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -366,6 +626,187 @@ export default function CompanyDetailsAdmin({
           </div>
         )}
       </div>
+
+      {/* Modal de Edição de Empresa */}
+      {showEditModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-lg w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center space-x-2">
+                <Pencil className="w-5 h-5 text-indigo-600" />
+                <span>Editar Empresa Cliente</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {editError && (
+              <div className="p-3 rounded-lg bg-red-50 text-red-700 text-xs">
+                {editError}
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEdit} className="space-y-4 text-xs">
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Nome da Empresa / Razão Social *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    CNPJ / Documento
+                  </label>
+                  <input
+                    type="text"
+                    value={editDocument}
+                    onChange={(e) => setEditDocument(e.target.value)}
+                    placeholder="00.000.000/0001-00"
+                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Status Contratual
+                  </label>
+                  <select
+                    value={editStatus}
+                    onChange={(e) => setEditStatus(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="ACTIVE">Ativo (Acesso Liberado)</option>
+                    <option value="SUSPENDED">Suspenso (Bloqueia Login)</option>
+                    <option value="CANCELLED">Cancelado (Desativado)</option>
+                  </select>
+                </div>
+              </div>
+
+              {plans && plans.length > 0 && (
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Plano Vinculado
+                  </label>
+                  <select
+                    value={editPlanId}
+                    onChange={(e) => setEditPlanId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
+                  >
+                    <option value="">Nenhum plano específico</option>
+                    {plans.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name} (Até {p.maxSites} sites)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Notas Internas
+                </label>
+                <textarea
+                  rows={2}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Informações técnicas de hospedagem, contato, etc."
+                  className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold shadow-xs disabled:opacity-50"
+                >
+                  {isPending ? "Salvando..." : "Salvar Alterações"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Exclusão de Empresa */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center space-x-3 text-rose-600">
+              <div className="p-2 rounded-xl bg-rose-50 border border-rose-100">
+                <AlertTriangle className="w-6 h-6 text-rose-600" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-900">
+                  Excluir Empresa Cliente
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Esta ação é irreversível
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-700 space-y-2 border border-slate-200/70">
+              <p>
+                Tem certeza que deseja excluir permanentemente a empresa{" "}
+                <strong className="text-slate-900 font-bold">{company.name}</strong>?
+              </p>
+              <ul className="list-disc list-inside text-[11px] text-slate-500 space-y-1">
+                <li>Todos os sites ({company.sites.length}) serão excluídos.</li>
+                <li>Todos os chamados ({company.tickets.length}) serão removidos.</li>
+                <li>O acesso dos usuários vinculados será revogado.</li>
+              </ul>
+            </div>
+
+            {deleteError && (
+              <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex justify-end space-x-2 pt-2">
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={() => setShowDeleteModal(false)}
+                className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold text-xs"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={handleDeleteCompany}
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-xs disabled:opacity-50 flex items-center space-x-1.5"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>{isPending ? "Excluindo..." : "Sim, Excluir Empresa"}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
