@@ -166,23 +166,33 @@ export async function createStripeCheckoutAction(companyId: string, invoiceId?: 
       });
     }
 
+    // Se o plano possui stripePriceId vinculado e o cliente usa o valor padrão do plano,
+    // criamos uma Assinatura Recorrente Automática ("subscription") no Stripe
+    const isRecurringSubscription = Boolean(
+      company.plan?.stripePriceId && !company.customPrice
+    );
+
+    const lineItems = isRecurringSubscription
+      ? [{ price: company.plan!.stripePriceId!, quantity: 1 }]
+      : [
+          {
+            price_data: {
+              currency: "brl",
+              product_data: {
+                name: `Assinatura VMASYS: ${company.plan?.name || "Plano sob Medida"}`,
+                description: `Mensalidade de desenvolvimento e suporte contínuo para ${company.name}`,
+              },
+              unit_amount: Math.round(amount * 100),
+            },
+            quantity: 1,
+          },
+        ];
+
     // Cria a sessão de checkout no Stripe
     const checkoutSession = await stripe.checkout.sessions.create({
       customer: customerId,
-      line_items: [
-        {
-          price_data: {
-            currency: "brl",
-            product_data: {
-              name: `Assinatura VMASYS: ${company.plan?.name || "Plano sob Medida"}`,
-              description: `Mensalidade de desenvolvimento e suporte contínuo para ${company.name}`,
-            },
-            unit_amount: Math.round(amount * 100),
-          },
-          quantity: 1,
-        },
-      ],
-      mode: "payment",
+      line_items: lineItems as any,
+      mode: isRecurringSubscription ? "subscription" : "payment",
       success_url: `${origin}/portal/pagamento?payment=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/portal/pagamento?payment=cancelled`,
       metadata: {

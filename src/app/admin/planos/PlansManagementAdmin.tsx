@@ -7,6 +7,7 @@ import {
   deletePlanAction,
   togglePlanStatusAction,
   savePlanBriefingQuestionsAction,
+  syncPlanWithStripeAction,
 } from "@/app/actions/plans";
 import { useRouter } from "next/navigation";
 import {
@@ -28,6 +29,7 @@ import {
   Plus,
   Sparkles,
   HelpCircle,
+  CreditCard,
 } from "lucide-react";
 
 export interface BriefingQuestion {
@@ -49,6 +51,7 @@ interface PlanItem {
   maxPages: number | null;
   slaHours: number | null;
   features: string | null;
+  stripePriceId?: string | null;
   briefingQuestions?: string | null;
   isActive: boolean;
   companies: { id: string; name: string; status: string }[];
@@ -74,6 +77,7 @@ export default function PlansManagementAdmin({
   const [features, setFeatures] = useState(
     "Hospedagem de alta performance inclusa\nCertificado SSL vitalício\nBackup diário automatizado\nSuporte direto via Help Desk"
   );
+  const [stripePriceId, setStripePriceId] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [createError, setCreateError] = useState<string | null>(null);
 
@@ -87,6 +91,7 @@ export default function PlansManagementAdmin({
   const [editMaxPages, setEditMaxPages] = useState("");
   const [editSlaHours, setEditSlaHours] = useState("48");
   const [editFeatures, setEditFeatures] = useState("");
+  const [editStripePriceId, setEditStripePriceId] = useState("");
   const [editIsActive, setEditIsActive] = useState(true);
   const [editError, setEditError] = useState<string | null>(null);
 
@@ -99,12 +104,29 @@ export default function PlansManagementAdmin({
   const [currentQuestions, setCurrentQuestions] = useState<BriefingQuestion[]>([]);
   const [questionsError, setQuestionsError] = useState<string | null>(null);
 
+  // Sincronização com Stripe
+  const [loadingSyncId, setLoadingSyncId] = useState<string | null>(null);
+
   // Feedback Toast
   const [toast, setToast] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleSyncStripe = (planId: string) => {
+    setLoadingSyncId(planId);
+    startTransition(async () => {
+      const res = await syncPlanWithStripeAction(planId);
+      setLoadingSyncId(null);
+      if (res.success) {
+        showToast(res.message || "Plano sincronizado com Stripe!");
+        router.refresh();
+      } else {
+        alert(res.error || "Erro ao sincronizar com Stripe.");
+      }
+    });
   };
 
   const parseQuestions = (raw?: string | null): BriefingQuestion[] => {
@@ -234,6 +256,7 @@ export default function PlansManagementAdmin({
     formData.append("maxPages", maxPages);
     formData.append("slaHours", slaHours);
     formData.append("features", features);
+    formData.append("stripePriceId", stripePriceId);
     formData.append("isActive", isActive ? "true" : "false");
 
     startTransition(async () => {
@@ -245,6 +268,7 @@ export default function PlansManagementAdmin({
         setName("");
         setDescription("");
         setPrice("299,00");
+        setStripePriceId("");
         showToast("Plano criado com sucesso!");
         router.refresh();
       }
@@ -261,6 +285,7 @@ export default function PlansManagementAdmin({
     setEditMaxPages(p.maxPages ? p.maxPages.toString() : "");
     setEditSlaHours((p.slaHours || 48).toString());
     setEditFeatures(p.features || "");
+    setEditStripePriceId(p.stripePriceId || "");
     setEditIsActive(p.isActive);
     setEditError(null);
   };
@@ -280,6 +305,7 @@ export default function PlansManagementAdmin({
     formData.append("maxPages", editMaxPages);
     formData.append("slaHours", editSlaHours);
     formData.append("features", editFeatures);
+    formData.append("stripePriceId", editStripePriceId);
     formData.append("isActive", editIsActive ? "true" : "false");
 
     startTransition(async () => {
@@ -528,6 +554,42 @@ export default function PlansManagementAdmin({
                   </button>
                 </div>
 
+                {/* Integração com Stripe */}
+                <div className="mt-2.5 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <CreditCard className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    {plan.stripePriceId ? (
+                      <span
+                        className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded truncate"
+                        title={`Stripe Price ID: ${plan.stripePriceId}`}
+                      >
+                        Stripe Vinculado ✓
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded">
+                        Sem ID Stripe
+                      </span>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    disabled={isPending || loadingSyncId === plan.id}
+                    onClick={() => handleSyncStripe(plan.id)}
+                    className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] border border-indigo-200 flex items-center space-x-1 transition-colors shrink-0 disabled:opacity-50"
+                    title="Cria automaticamente o produto e a mensalidade recorrente no Stripe"
+                  >
+                    <Sparkles className="w-3 h-3 text-indigo-500" />
+                    <span>
+                      {loadingSyncId === plan.id
+                        ? "Sincronizando..."
+                        : plan.stripePriceId
+                        ? "Ressincronizar"
+                        : "Vincular no Stripe"}
+                    </span>
+                  </button>
+                </div>
+
                 {/* Footer do Card */}
                 <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div className="flex items-center space-x-1.5 text-slate-500">
@@ -688,6 +750,26 @@ export default function PlansManagementAdmin({
                   placeholder="Hospedagem inclusa&#10;SSL Grátis&#10;Backup Diário&#10;Suporte por WhatsApp"
                   className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                    ID do Preço no Stripe (Opcional)
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">Ex: price_1Op...</span>
+                </label>
+                <input
+                  type="text"
+                  value={stripePriceId}
+                  onChange={(e) => setStripePriceId(e.target.value)}
+                  placeholder="Deixe em branco para sincronizar automaticamente com 1 clique"
+                  className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 font-mono text-xs"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Se informado, vinculará o plano a um Preço existente na Stripe. Caso vazio, clique em &quot;⚡ Vincular no Stripe&quot; após criar.
+                </p>
               </div>
 
               <div className="flex items-center space-x-2 pt-2">
@@ -856,6 +938,26 @@ export default function PlansManagementAdmin({
                   onChange={(e) => setEditFeatures(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 p-2 text-slate-900 focus:outline-none focus:border-indigo-600"
                 />
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <CreditCard className="w-3.5 h-3.5 text-indigo-600" />
+                    ID do Preço no Stripe (Opcional)
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-normal">Ex: price_1Op...</span>
+                </label>
+                <input
+                  type="text"
+                  value={editStripePriceId}
+                  onChange={(e) => setEditStripePriceId(e.target.value)}
+                  placeholder="price_xxxxxxxxxxxx ou deixe vazio para gerar automático"
+                  className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 font-mono text-xs"
+                />
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Você também pode sincronizar ou atualizar automaticamente clicando no botão &quot;⚡ Vincular no Stripe&quot; no card deste plano.
+                </p>
               </div>
 
               <div className="flex items-center space-x-2 pt-2">

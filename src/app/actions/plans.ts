@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { stripe, isStripeConfigured } from "@/lib/stripe";
 
 export async function createPlanAction(formData: FormData) {
   const session = await getSession();
@@ -30,6 +31,7 @@ export async function createPlanAction(formData: FormData) {
   const slaHours = slaHoursRaw ? parseInt(slaHoursRaw, 10) : 48;
 
   const features = formData.get("features")?.toString().trim() || null;
+  const stripePriceId = formData.get("stripePriceId")?.toString().trim() || null;
   const isActive = formData.get("isActive") !== "false";
 
   if (!name) {
@@ -47,6 +49,7 @@ export async function createPlanAction(formData: FormData) {
         maxPages: isNaN(maxPages as any) ? null : maxPages,
         slaHours: isNaN(slaHours) ? 48 : slaHours,
         features,
+        stripePriceId,
         isActive,
       },
     });
@@ -87,6 +90,7 @@ export async function updatePlanAction(formData: FormData) {
   const slaHours = slaHoursRaw ? parseInt(slaHoursRaw, 10) : 48;
 
   const features = formData.get("features")?.toString().trim() || null;
+  const stripePriceId = formData.get("stripePriceId")?.toString().trim() || null;
   const isActive = formData.get("isActive") === "true";
 
   if (!planId || !name) {
@@ -105,6 +109,7 @@ export async function updatePlanAction(formData: FormData) {
         maxPages: isNaN(maxPages as any) ? null : maxPages,
         slaHours: isNaN(slaHours) ? 48 : slaHours,
         features,
+        stripePriceId,
         isActive,
       },
     });
@@ -115,6 +120,72 @@ export async function updatePlanAction(formData: FormData) {
   } catch (err: any) {
     console.error("Erro ao atualizar plano:", err);
     return { error: "Erro ao atualizar dados do plano." };
+  }
+}
+
+export async function syncPlanWithStripeAction(planId: string) {
+  const session = await getSession();
+  if (!session || session.role !== "ADMIN") {
+    return { error: "Apenas o Administrador Geral pode sincronizar planos com o Stripe." };
+  }
+
+  if (!isStripeConfigured || !stripe) {
+    return {
+      error:
+        "O Stripe não está configurado. Por favor, adicione a chave STRIPE_SECRET_KEY no painel da Vercel ou no arquivo .env.",
+    };
+  }
+
+  try {
+    const plan = await prisma.plan.findUnique({ where: { id: planId } });
+    if (!plan) return { error: "Plano não encontrado." };
+
+    // 1. Cria Produto no Stripe
+    const product = await stripe.products.create({
+      name: `VMASYS: ${plan.name}`,
+      description:
+        plan.description ||
+        `Assinatura de desenvolvimento e manutenção contínua: ${plan.name}`,
+      metadata: {
+        planId: plan.id,
+      },
+    });
+
+    // 2. Cria Preço Recorrente Mensal (BRL)
+    const price = await stripe.prices.create({
+      product: product.id,
+      unit_amount: Math.round((plan.price || 0) * 100),
+      currency: "brl",
+      recurring: {
+        interval: "month",
+      },
+      metadata: {
+        planId: plan.id,
+      },
+    });
+
+    // 3. Atualiza o banco com o ID do Preço Stripe
+    await prisma.plan.update({
+      where: { id: planId },
+      data: {
+        stripePriceId: price.id,
+      },
+    });
+
+    revalidatePath("/admin/planos");
+    revalidatePath("/admin/clientes");
+    revalidatePath("/portal/pagamento");
+
+    return {
+      success: true,
+      message: `Plano '${plan.name}' vinculado com sucesso ao Stripe! ID: ${price.id}`,
+      stripePriceId: price.id,
+    };
+  } catch (err: any) {
+    console.error("Erro ao sincronizar plano com Stripe:", err);
+    return {
+      error: "Falha na API do Stripe: " + (err.message || "Erro desconhecido"),
+    };
   }
 }
 

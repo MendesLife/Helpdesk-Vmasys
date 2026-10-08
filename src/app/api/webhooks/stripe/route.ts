@@ -66,6 +66,10 @@ export async function POST(req: NextRequest) {
                 typeof session.customer === "string"
                   ? session.customer
                   : undefined,
+              stripeSubscriptionId:
+                typeof session.subscription === "string"
+                  ? session.subscription
+                  : undefined,
             },
           });
         }
@@ -87,6 +91,18 @@ export async function POST(req: NextRequest) {
               data: { financialStatus: "EM_DIA" },
             });
           }
+        }
+        break;
+      }
+
+      case "customer.subscription.deleted": {
+        const sub = event.data.object;
+        const customerId = sub.customer;
+        if (customerId && typeof customerId === "string") {
+          await prisma.company.updateMany({
+            where: { stripeCustomerId: customerId },
+            data: { financialStatus: "EM_ATRASO" },
+          });
         }
         break;
       }
