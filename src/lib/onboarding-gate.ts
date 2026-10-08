@@ -3,6 +3,12 @@ export interface OnboardingCompanyData {
   name: string;
   financialStatus?: string | null;
   onboardingStage?: string | null;
+  customPrice?: number | null;
+  plan?: {
+    id: string;
+    name: string;
+    price?: number | null;
+  } | null;
   contract?: {
     status?: string | null;
     signedAt?: Date | string | null;
@@ -94,11 +100,15 @@ export function getOnboardingGateStatus(
   );
 
   // Trava 2: Confirmação do Primeiro Pagamento (Onboarding Inicial)
+  const isFreePlan = Boolean(
+    company.customPrice === 0 ||
+    (company.customPrice == null && company.plan && company.plan.price === 0)
+  );
   const hasPaidInvoice = Boolean(
     company.invoices && company.invoices.some((i) => i.status === "PAID")
   );
   const isPaymentSettled = Boolean(
-    company.financialStatus === "EM_DIA" || hasPaidInvoice
+    isFreePlan || company.financialStatus === "EM_DIA" || hasPaidInvoice
   );
 
   // Trava 3: Briefing de Construção do Site

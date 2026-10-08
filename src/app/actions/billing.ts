@@ -149,7 +149,16 @@ export async function createStripeCheckoutAction(companyId: string, invoiceId?: 
       headersList.get("x-forwarded-proto") ||
       (host.includes("localhost") ? "http" : "https");
     const origin = process.env.NEXTAUTH_URL || `${proto}://${host}`;
-    const amount = company.customPrice || company.plan?.price || 299;
+    const amount =
+      company.customPrice !== undefined && company.customPrice !== null
+        ? company.customPrice
+        : company.plan?.price !== undefined && company.plan?.price !== null
+        ? company.plan.price
+        : 0;
+
+    if (amount <= 0) {
+      return { error: "Este plano é gratuito e não requer cobrança no Stripe." };
+    }
 
     // Cria ou recupera cliente no Stripe
     let customerId = company.stripeCustomerId;

@@ -34,7 +34,14 @@ export default function PaymentGateClient({ company, invoice, gate }: Props) {
   const [copiedPix, setCopiedPix] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const amount = invoice?.amount || company.customPrice || company.plan?.price || 299;
+  const amount =
+    invoice?.amount !== undefined && invoice?.amount !== null
+      ? invoice.amount
+      : company.customPrice !== undefined && company.customPrice !== null
+      ? company.customPrice
+      : company.plan?.price !== undefined && company.plan?.price !== null
+      ? company.plan.price
+      : 0;
   const pixKey = "financeiro@vmasys.com.br"; // Chave PIX padrão da agência
 
   const handleCopyPix = () => {
@@ -63,7 +70,7 @@ export default function PaymentGateClient({ company, invoice, gate }: Props) {
       {/* Stepper no Topo */}
       <OnboardingGateStepper gate={gate} companyName={company.name} />
 
-      {/* Se o pagamento já foi confirmado */}
+      {/* Se o pagamento já foi confirmado ou é plano gratuito */}
       {gate.isPaymentSettled ? (
         <div className="bg-white rounded-2xl border border-emerald-200 p-8 text-center space-y-4 shadow-xs">
           <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
@@ -72,10 +79,12 @@ export default function PaymentGateClient({ company, invoice, gate }: Props) {
 
           <div className="max-w-md mx-auto space-y-2">
             <h1 className="text-2xl font-black text-slate-900">
-              Pagamento Confirmado com Sucesso!
+              {amount === 0 ? "Plano Gratuito Ativado!" : "Pagamento Confirmado com Sucesso!"}
             </h1>
             <p className="text-sm text-slate-600">
-              Sua 1ª mensalidade foi liquidada e a etapa de contratação está concluída. O próximo passo é o envio do briefing para começarmos a criar o seu site.
+              {amount === 0
+                ? "Sua assinatura é gratuita (R$ 0,00) e não requer cobrança. O próximo passo é o envio do briefing para começarmos a criar o seu site."
+                : "Sua 1ª mensalidade foi liquidada e a etapa de contratação está concluída. O próximo passo é o envio do briefing para começarmos a criar o seu site."}
             </p>
           </div>
 

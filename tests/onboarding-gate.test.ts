@@ -206,4 +206,24 @@ describe("Funil de Onboarding com Travas Progressivas (Gated Onboarding)", () =>
     expect(gate.canAccessTickets).toBe(false);
     expect(gate.redirectTarget).toBe("/portal/pagamento");
   });
+
+  it("Plano Gratuito (R$ 0,00): Considera pagamento quitado e avança automaticamente para o briefing após assinatura", () => {
+    const company = {
+      id: "comp-9",
+      name: "Empresa Grátis",
+      financialStatus: "PENDENTE",
+      plan: { id: "plan-free", name: "Plano Grátis", price: 0 },
+      contract: { status: "SIGNED", signedAt: new Date() },
+      briefing: { status: "DRAFT" },
+      invoices: [],
+    };
+
+    const gate = getOnboardingGateStatus(company, "CLIENT");
+
+    expect(gate.isContractSigned).toBe(true);
+    expect(gate.isPaymentSettled).toBe(true); // Automaticamente quitado porque valor é R$ 0!
+    expect(gate.currentStep).toBe(3); // Vai direto para o briefing
+    expect(gate.canAccessBriefing).toBe(true);
+    expect(gate.redirectTarget).toBe("/portal/briefing");
+  });
 });

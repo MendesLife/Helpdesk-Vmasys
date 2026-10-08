@@ -58,8 +58,31 @@ export async function createCompanyAction(formData: FormData) {
     });
 
     // Se a empresa possui plano ou valor definido, gera a 1ª Fatura de ativação
-    const initialPrice = company.customPrice || company.plan?.price || 0;
-    if (initialPrice > 0) {
+    const initialPrice =
+      company.customPrice !== undefined && company.customPrice !== null
+        ? company.customPrice
+        : company.plan?.price !== undefined && company.plan?.price !== null
+        ? company.plan.price
+        : 0;
+
+    if (initialPrice === 0) {
+      // Plano Gratuito (R$ 0,00): fatura já nasce quitada e empresa fica EM_DIA automaticamente
+      await prisma.invoice.create({
+        data: {
+          companyId: company.id,
+          amount: 0,
+          dueDate: new Date(),
+          paymentMethod: "GRATUITO",
+          status: "PAID",
+          paidAt: new Date(),
+        },
+      });
+
+      await prisma.company.update({
+        where: { id: company.id },
+        data: { financialStatus: "EM_DIA" },
+      });
+    } else {
       const dueDate =
         company.contractStartDate ||
         new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
