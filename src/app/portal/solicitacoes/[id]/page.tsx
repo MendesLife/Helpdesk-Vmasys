@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import TicketConversation from "./TicketConversation";
 import ClientApprovalActions from "./ClientApprovalActions";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
 import {
   Globe,
   Clock,
@@ -55,8 +56,18 @@ export default async function ClientTicketDetailPage({ params }: Props) {
   // VALIDAÇÃO ESTRITA DE ISOLAMENTO: se o chamado não existe ou é de outra empresa, 404!
   if (!ticket) notFound();
 
-  if (session.role === "CLIENT" && ticket.companyId !== session.companyId) {
-    notFound(); // Não revela nem sequer que o ID existe para outra empresa!
+  if (session.role === "CLIENT") {
+    if (ticket.companyId !== session.companyId) {
+      notFound();
+    }
+    const fullCompany = await prisma.company.findUnique({
+      where: { id: ticket.companyId },
+      include: { contract: true, briefing: true, invoices: true },
+    });
+    const gate = getOnboardingGateStatus(fullCompany as any, session.role);
+    if (!gate.canAccessTickets) {
+      redirect(gate.redirectTarget || "/portal/contrato");
+    }
   }
 
   const steps = [

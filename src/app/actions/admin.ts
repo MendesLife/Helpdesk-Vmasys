@@ -52,8 +52,28 @@ export async function createCompanyAction(formData: FormData) {
           },
         },
       },
-      include: { sites: true },
+      include: { sites: true, plan: true },
     });
+
+    // Se a empresa possui plano ou valor definido, gera a 1ª Fatura de ativação
+    const initialPrice = company.customPrice || company.plan?.price || 0;
+    if (initialPrice > 0) {
+      const now = new Date();
+      const dueDate =
+        company.contractStartDate ||
+        new Date(now.setDate(now.getDate() + 3));
+
+      await prisma.invoice.create({
+        data: {
+          companyId: company.id,
+          amount: initialPrice,
+          dueDate,
+          paymentMethod: company.paymentMethod || "PIX",
+          status: company.financialStatus === "EM_DIA" ? "PAID" : "PENDING",
+          paidAt: company.financialStatus === "EM_DIA" ? new Date() : null,
+        },
+      });
+    }
 
     revalidatePath("/admin/clientes");
     return { success: true, companyId: company.id };

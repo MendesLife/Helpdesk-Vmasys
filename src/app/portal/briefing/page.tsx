@@ -1,6 +1,8 @@
 import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
+import OnboardingGateStepper from "@/components/OnboardingGateStepper";
 import BriefingForm from "./BriefingForm";
 
 export default async function ClientBriefingPage() {
@@ -26,6 +28,8 @@ export default async function ClientBriefingPage() {
     include: {
       plan: true,
       briefing: true,
+      contract: true,
+      invoices: true,
     },
   });
 
@@ -37,8 +41,17 @@ export default async function ClientBriefingPage() {
     );
   }
 
+  const gate = getOnboardingGateStatus(company as any, session.role);
+
+  // Trava de Onboarding: se ainda não assinou o contrato ou não pagou, redireciona para a etapa anterior
+  if (!gate.canAccessBriefing && session.role === "CLIENT") {
+    redirect(gate.redirectTarget || "/portal/contrato");
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      <OnboardingGateStepper gate={gate} companyName={company.name} />
+
       <BriefingForm
         companyId={company.id}
         companyName={company.name}

@@ -2,6 +2,8 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import { generateDefaultContractTerms } from "@/lib/contract-template";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
+import OnboardingGateStepper from "@/components/OnboardingGateStepper";
 import ContractViewClient from "./ContractViewClient";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +31,8 @@ export default async function ClientContractPage() {
     include: {
       plan: true,
       contract: true,
+      briefing: true,
+      invoices: true,
     },
   });
 
@@ -40,12 +44,16 @@ export default async function ClientContractPage() {
     );
   }
 
+  const gate = getOnboardingGateStatus(company as any, session.role);
+
   // Se a empresa ainda não tiver um texto customizado gravado no contrato, gera o texto padrão com os dados do plano
   const contractContent =
     company.contract?.termsContent || generateDefaultContractTerms(company);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
+      <OnboardingGateStepper gate={gate} companyName={company.name} />
+
       <ContractViewClient
         companyId={company.id}
         companyName={company.name}

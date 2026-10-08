@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { signContractAction } from "@/app/actions/contract";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   FileText,
   CheckCircle2,
@@ -16,6 +17,7 @@ import {
   Building2,
   Calendar,
   Globe,
+  ArrowRight,
 } from "lucide-react";
 
 interface Props {
@@ -87,6 +89,9 @@ export default function ContractViewClient({
       } else if (res?.message) {
         setFeedback({ type: "success", message: res.message });
         router.refresh();
+        setTimeout(() => {
+          router.push("/portal/pagamento");
+        }, 1200);
       }
     });
   };
@@ -216,6 +221,19 @@ export default function ContractViewClient({
                 {contract.signedByIp || "Registrado"}
               </strong>
             </div>
+          </div>
+
+          <div className="pt-3 border-t border-emerald-200/60 flex items-center justify-between flex-wrap gap-2 print:hidden">
+            <span className="text-xs text-emerald-800 font-medium">
+              Contrato formalizado com sucesso! Siga para a próxima etapa:
+            </span>
+            <Link
+              href="/portal/pagamento"
+              className="inline-flex items-center px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition-colors"
+            >
+              <span>Avançar para o Passo 2: Pagamento</span>
+              <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Link>
           </div>
         </div>
       )}

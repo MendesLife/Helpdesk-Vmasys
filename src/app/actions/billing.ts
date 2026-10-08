@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { getSession } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { stripe, isStripeConfigured } from "@/lib/stripe";
 
 export async function createInvoiceAction(formData: FormData) {
@@ -142,7 +143,12 @@ export async function createStripeCheckoutAction(companyId: string, invoiceId?: 
 
     if (!company) return { error: "Empresa não encontrada." };
 
-    const origin = process.env.NEXTAUTH_URL || "https://helpdesk.vmasys.com.br";
+    const headersList = await headers();
+    const host = headersList.get("host") || "localhost:3000";
+    const proto =
+      headersList.get("x-forwarded-proto") ||
+      (host.includes("localhost") ? "http" : "https");
+    const origin = process.env.NEXTAUTH_URL || `${proto}://${host}`;
     const amount = company.customPrice || company.plan?.price || 299;
 
     // Cria ou recupera cliente no Stripe
@@ -177,8 +183,8 @@ export async function createStripeCheckoutAction(companyId: string, invoiceId?: 
         },
       ],
       mode: "payment",
-      success_url: `${origin}/portal/dashboard?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/portal/dashboard?payment=cancelled`,
+      success_url: `${origin}/portal/pagamento?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/portal/pagamento?payment=cancelled`,
       metadata: {
         companyId: company.id,
         invoiceId: invoiceId || "",

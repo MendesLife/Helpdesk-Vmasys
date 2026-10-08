@@ -17,6 +17,8 @@ import {
   CreditCard,
   DollarSign,
 } from "lucide-react";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
+import OnboardingGateStepper from "@/components/OnboardingGateStepper";
 
 export default async function ClientDashboardPage() {
   const session = await getSession();
@@ -54,6 +56,13 @@ export default async function ClientDashboardPage() {
 
   if (!company) {
     return <div>Empresa não encontrada.</div>;
+  }
+
+  const gate = getOnboardingGateStatus(company as any, session.role);
+
+  // Trava de Onboarding Progressivo: se ainda não concluiu as etapas obrigatórias, redireciona o cliente para a etapa pendente
+  if (session.role === "CLIENT" && !gate.isFullyUnlocked) {
+    redirect(gate.redirectTarget || "/portal/contrato");
   }
 
   // Contadores de solicitações (ESTRITAMENTE filtrados por companyId)
@@ -119,6 +128,9 @@ export default async function ClientDashboardPage() {
           <span>Nova Solicitação</span>
         </Link>
       </div>
+
+      {/* Stepper de Onboarding e Status */}
+      <OnboardingGateStepper gate={gate} companyName={company.name} />
 
       {/* Pipeline de Criação / Onboarding Tracker */}
       {company.onboardingStage !== "ATIVO_MANUTENCAO" && (

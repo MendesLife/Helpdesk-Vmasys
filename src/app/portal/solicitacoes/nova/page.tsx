@@ -2,6 +2,7 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { redirect } from "next/navigation";
 import NewTicketForm from "./NewTicketForm";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
 
 export default async function NewTicketPage() {
   const session = await getSession();
@@ -15,6 +16,16 @@ export default async function NewTicketPage() {
 
   if (!companyId) {
     return <div>Nenhuma empresa vinculada.</div>;
+  }
+
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    include: { contract: true, briefing: true, invoices: true },
+  });
+
+  const gate = getOnboardingGateStatus(company as any, session.role);
+  if (!gate.canAccessTickets && session.role === "CLIENT") {
+    redirect(gate.redirectTarget || "/portal/contrato");
   }
 
   const sites = await prisma.companySite.findMany({

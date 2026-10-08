@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import TicketListClient from "./TicketListClient";
 import { PlusCircle } from "lucide-react";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
 
 interface Props {
   searchParams: Promise<{ [key: string]: string | undefined }>;
@@ -20,6 +21,16 @@ export default async function ClientTicketsPage({ searchParams }: Props) {
   }
 
   if (!companyId) return <div>Nenhuma empresa vinculada.</div>;
+
+  const company = await prisma.company.findUnique({
+    where: { id: companyId },
+    include: { contract: true, briefing: true, invoices: true },
+  });
+
+  const gate = getOnboardingGateStatus(company as any, session.role);
+  if (!gate.canAccessTickets && session.role === "CLIENT") {
+    redirect(gate.redirectTarget || "/portal/contrato");
+  }
 
   const tickets = await prisma.ticket.findMany({
     where: { companyId },

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { logoutAction } from "@/app/actions/auth";
 import TenantSwitcher from "@/components/TenantSwitcher";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
 import {
   Layers,
   LayoutDashboard,
@@ -13,6 +14,9 @@ import {
   ExternalLink,
   FileText,
   Scale,
+  CreditCard,
+  Lock,
+  CheckCircle2,
 } from "lucide-react";
 
 export default async function PortalLayout({
@@ -51,6 +55,20 @@ export default async function PortalLayout({
     );
   }
 
+  // Busca a empresa ativa com dados de onboarding, contrato, briefing e faturas
+  const currentCompany = session.companyId
+    ? await prisma.company.findUnique({
+        where: { id: session.companyId },
+        include: {
+          contract: true,
+          briefing: true,
+          invoices: true,
+        },
+      })
+    : null;
+
+  const gate = getOnboardingGateStatus(currentCompany as any, session.role);
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       {/* Top Navbar */}
@@ -59,7 +77,11 @@ export default async function PortalLayout({
           <div className="flex justify-between h-16">
             <div className="flex items-center space-x-3 sm:space-x-6">
               <Link
-                href="/portal/dashboard"
+                href={
+                  gate.isFullyUnlocked
+                    ? "/portal/dashboard"
+                    : gate.redirectTarget || "/portal/contrato"
+                }
                 className="flex items-center space-x-3 shrink-0"
               >
                 <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 text-white flex items-center justify-center shadow-md shadow-sky-100">
@@ -88,44 +110,132 @@ export default async function PortalLayout({
               {/* Desktop Nav Links */}
               <nav className="hidden sm:flex items-center space-x-1 pl-4">
                 <Link
-                  href="/portal/dashboard"
+                  href={
+                    gate.isFullyUnlocked
+                      ? "/portal/dashboard"
+                      : gate.redirectTarget || "/portal/contrato"
+                  }
                   className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
                 >
                   <LayoutDashboard className="w-4 h-4 text-slate-400" />
                   <span>Início</span>
                 </Link>
 
-                <Link
-                  href="/portal/briefing"
-                  className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
-                >
-                  <FileText className="w-4 h-4 text-slate-400" />
-                  <span>Briefing</span>
-                </Link>
-
+                {/* 1. Contrato */}
                 <Link
                   href="/portal/contrato"
                   className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
                 >
                   <Scale className="w-4 h-4 text-slate-400" />
                   <span>Contrato</span>
+                  {gate.isContractSigned ? (
+                    <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">
+                      ✓
+                    </span>
+                  ) : (
+                    <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 rounded-full">
+                      1
+                    </span>
+                  )}
                 </Link>
 
-                <Link
-                  href="/portal/solicitacoes"
-                  className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
-                >
-                  <Ticket className="w-4 h-4 text-slate-400" />
-                  <span>Solicitações</span>
-                </Link>
+                {/* 2. Pagamento */}
+                {gate.canAccessPagamento ? (
+                  <Link
+                    href="/portal/pagamento"
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
+                  >
+                    <CreditCard className="w-4 h-4 text-slate-400" />
+                    <span>Pagamento</span>
+                    {gate.isPaymentSettled ? (
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">
+                        ✓
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-amber-700 font-bold bg-amber-100 px-1.5 rounded-full">
+                        2
+                      </span>
+                    )}
+                  </Link>
+                ) : (
+                  <div
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-slate-300 flex items-center space-x-1.5 cursor-not-allowed select-none"
+                    title="Disponível após assinar o contrato"
+                  >
+                    <CreditCard className="w-4 h-4 text-slate-300" />
+                    <span>Pagamento</span>
+                    <Lock className="w-3 h-3 text-slate-300" />
+                  </div>
+                )}
 
-                <Link
-                  href="/portal/solicitacoes/nova"
-                  className="px-3 py-2 rounded-lg text-sm font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 flex items-center space-x-1.5 transition-colors"
-                >
-                  <PlusCircle className="w-4 h-4" />
-                  <span>Nova Solicitação</span>
-                </Link>
+                {/* 3. Briefing */}
+                {gate.canAccessBriefing ? (
+                  <Link
+                    href="/portal/briefing"
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
+                  >
+                    <FileText className="w-4 h-4 text-slate-400" />
+                    <span>Briefing</span>
+                    {gate.isBriefingApproved ? (
+                      <span className="text-[10px] text-emerald-600 font-bold bg-emerald-50 px-1 rounded">
+                        ✓
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-sky-700 font-bold bg-sky-100 px-1.5 rounded-full">
+                        3
+                      </span>
+                    )}
+                  </Link>
+                ) : (
+                  <div
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-slate-300 flex items-center space-x-1.5 cursor-not-allowed select-none"
+                    title="Disponível após confirmação do primeiro pagamento"
+                  >
+                    <FileText className="w-4 h-4 text-slate-300" />
+                    <span>Briefing</span>
+                    <Lock className="w-3 h-3 text-slate-300" />
+                  </div>
+                )}
+
+                {/* 4. Solicitações */}
+                {gate.canAccessTickets ? (
+                  <Link
+                    href="/portal/solicitacoes"
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
+                  >
+                    <Ticket className="w-4 h-4 text-slate-400" />
+                    <span>Solicitações</span>
+                  </Link>
+                ) : (
+                  <div
+                    className="px-3 py-2 rounded-lg text-sm font-medium text-slate-300 flex items-center space-x-1.5 cursor-not-allowed select-none"
+                    title="Disponível após aprovação do briefing e ativação do site"
+                  >
+                    <Ticket className="w-4 h-4 text-slate-300" />
+                    <span>Solicitações</span>
+                    <Lock className="w-3 h-3 text-slate-300" />
+                  </div>
+                )}
+
+                {/* + Nova Solicitação */}
+                {gate.canAccessTickets ? (
+                  <Link
+                    href="/portal/solicitacoes/nova"
+                    className="px-3 py-2 rounded-lg text-sm font-semibold text-sky-700 bg-sky-50 hover:bg-sky-100 flex items-center space-x-1.5 transition-colors"
+                  >
+                    <PlusCircle className="w-4 h-4" />
+                    <span>Nova Solicitação</span>
+                  </Link>
+                ) : (
+                  <div
+                    className="px-3 py-2 rounded-lg text-sm font-semibold text-slate-300 bg-slate-100/60 flex items-center space-x-1.5 cursor-not-allowed select-none"
+                    title="Disponível após ativação do site"
+                  >
+                    <PlusCircle className="w-4 h-4 text-slate-300" />
+                    <span>Nova Solicitação</span>
+                    <Lock className="w-3 h-3 text-slate-300" />
+                  </div>
+                )}
               </nav>
             </div>
 
@@ -157,40 +267,78 @@ export default async function PortalLayout({
         {/* Mobile Nav Sub-bar */}
         <div className="sm:hidden border-t border-slate-100 px-4 py-2 flex items-center justify-around bg-slate-50 text-xs font-medium">
           <Link
-            href="/portal/dashboard"
+            href={
+              gate.isFullyUnlocked
+                ? "/portal/dashboard"
+                : gate.redirectTarget || "/portal/contrato"
+            }
             className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600"
           >
             <LayoutDashboard className="w-4 h-4 mb-0.5" />
             <span>Início</span>
           </Link>
-          <Link
-            href="/portal/briefing"
-            className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600"
-          >
-            <FileText className="w-4 h-4 mb-0.5" />
-            <span>Briefing</span>
-          </Link>
+
           <Link
             href="/portal/contrato"
-            className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600"
+            className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600 relative"
           >
             <Scale className="w-4 h-4 mb-0.5" />
             <span>Contrato</span>
+            {gate.isContractSigned && (
+              <span className="absolute top-0 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+            )}
           </Link>
-          <Link
-            href="/portal/solicitacoes"
-            className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600"
-          >
-            <Ticket className="w-4 h-4 mb-0.5" />
-            <span>Solicitações</span>
-          </Link>
-          <Link
-            href="/portal/solicitacoes/nova"
-            className="flex flex-col items-center py-1 text-sky-700 font-semibold"
-          >
-            <PlusCircle className="w-4 h-4 mb-0.5" />
-            <span>+ Solicitação</span>
-          </Link>
+
+          {gate.canAccessPagamento ? (
+            <Link
+              href="/portal/pagamento"
+              className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600 relative"
+            >
+              <CreditCard className="w-4 h-4 mb-0.5" />
+              <span>Pagar</span>
+              {gate.isPaymentSettled && (
+                <span className="absolute top-0 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              )}
+            </Link>
+          ) : (
+            <div className="flex flex-col items-center py-1 text-slate-300 opacity-60">
+              <Lock className="w-4 h-4 mb-0.5" />
+              <span>Pagar</span>
+            </div>
+          )}
+
+          {gate.canAccessBriefing ? (
+            <Link
+              href="/portal/briefing"
+              className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600 relative"
+            >
+              <FileText className="w-4 h-4 mb-0.5" />
+              <span>Briefing</span>
+              {gate.isBriefingApproved && (
+                <span className="absolute top-0 right-1 w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              )}
+            </Link>
+          ) : (
+            <div className="flex flex-col items-center py-1 text-slate-300 opacity-60">
+              <Lock className="w-4 h-4 mb-0.5" />
+              <span>Briefing</span>
+            </div>
+          )}
+
+          {gate.canAccessTickets ? (
+            <Link
+              href="/portal/solicitacoes"
+              className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600"
+            >
+              <Ticket className="w-4 h-4 mb-0.5" />
+              <span>Chamados</span>
+            </Link>
+          ) : (
+            <div className="flex flex-col items-center py-1 text-slate-300 opacity-60">
+              <Lock className="w-4 h-4 mb-0.5" />
+              <span>Chamados</span>
+            </div>
+          )}
         </div>
       </header>
 
