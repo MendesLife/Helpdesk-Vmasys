@@ -130,4 +130,80 @@ describe("Funil de Onboarding com Travas Progressivas (Gated Onboarding)", () =>
     expect(gateEquipe.canAccessTickets).toBe(true);
     expect(gateEquipe.redirectTarget).toBeNull();
   });
+
+  it("Carência Financeira (Tolerância): Emite alerta amarelo nos primeiros 3 dias de atraso sem bloquear chamados", () => {
+    const twoDaysAgo = new Date();
+    twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+
+    const company = {
+      id: "comp-6",
+      name: "Empresa Teste",
+      financialStatus: "EM_DIA",
+      onboardingStage: "ATIVO_MANUTENCAO",
+      contract: { status: "SIGNED", signedAt: new Date() },
+      briefing: { status: "APPROVED", approvedAt: new Date() },
+      invoices: [
+        { id: "inv-old", status: "PAID", amount: 299, dueDate: new Date(), paidAt: new Date() },
+        { id: "inv-current", status: "PENDING", amount: 299, dueDate: twoDaysAgo },
+      ],
+    };
+
+    const gate = getOnboardingGateStatus(company, "CLIENT");
+
+    expect(gate.currentStep).toBe(4);
+    expect(gate.financialAlert).not.toBeNull();
+    expect(gate.financialAlert?.hasOverdue).toBe(true);
+    expect(gate.financialAlert?.isGracePeriod).toBe(true);
+    expect(gate.financialAlert?.isBlocked).toBe(false);
+    expect(gate.canAccessTickets).toBe(true); // Ainda pode abrir chamados durante a tolerância
+    expect(gate.redirectTarget).toBeNull();
+  });
+
+  it("Bloqueio por Inadimplência: Bloqueia abertura de chamados após 3 dias de atraso e redireciona para pagamento", () => {
+    const fiveDaysAgo = new Date();
+    fiveDaysAgo.setDate(fiveDaysAgo.getDate() - 5);
+
+    const company = {
+      id: "comp-7",
+      name: "Empresa Teste",
+      financialStatus: "EM_DIA",
+      onboardingStage: "ATIVO_MANUTENCAO",
+      contract: { status: "SIGNED", signedAt: new Date() },
+      briefing: { status: "APPROVED", approvedAt: new Date() },
+      invoices: [
+        { id: "inv-old", status: "PAID", amount: 299, dueDate: new Date(), paidAt: new Date() },
+        { id: "inv-current", status: "OVERDUE", amount: 299, dueDate: fiveDaysAgo },
+      ],
+    };
+
+    const gate = getOnboardingGateStatus(company, "CLIENT");
+
+    expect(gate.currentStep).toBe(4);
+    expect(gate.financialAlert).not.toBeNull();
+    expect(gate.financialAlert?.hasOverdue).toBe(true);
+    expect(gate.financialAlert?.isGracePeriod).toBe(false);
+    expect(gate.financialAlert?.isBlocked).toBe(true);
+    expect(gate.canAccessTickets).toBe(false); // Bloqueado!
+    expect(gate.redirectTarget).toBe("/portal/pagamento");
+  });
+
+  it("Bloqueio Imediato: Se o status for ATRASADO ou SUSPENSO, bloqueia chamados independentemente dos dias", () => {
+    const company = {
+      id: "comp-8",
+      name: "Empresa Teste",
+      financialStatus: "ATRASADO",
+      onboardingStage: "ATIVO_MANUTENCAO",
+      contract: { status: "SIGNED", signedAt: new Date() },
+      briefing: { status: "APPROVED", approvedAt: new Date() },
+      invoices: [
+        { id: "inv-old", status: "PAID", amount: 299, dueDate: new Date(), paidAt: new Date() },
+      ],
+    };
+
+    const gate = getOnboardingGateStatus(company, "CLIENT");
+
+    expect(gate.financialAlert?.isBlocked).toBe(true);
+    expect(gate.canAccessTickets).toBe(false);
+    expect(gate.redirectTarget).toBe("/portal/pagamento");
+  });
 });

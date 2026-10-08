@@ -107,6 +107,18 @@ export async function POST(req: NextRequest) {
         break;
       }
 
+      case "invoice.payment_failed": {
+        const invoiceObj = event.data.object;
+        const customerId = invoiceObj.customer;
+        if (customerId && typeof customerId === "string") {
+          await prisma.company.updateMany({
+            where: { stripeCustomerId: customerId },
+            data: { financialStatus: "ATRASADO" },
+          });
+        }
+        break;
+      }
+
       default:
         // Outros eventos recebidos
         break;

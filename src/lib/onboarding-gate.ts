@@ -21,6 +21,16 @@ export interface OnboardingCompanyData {
   }[] | null;
 }
 
+export interface FinancialAlert {
+  hasOverdue: boolean;
+  isGracePeriod: boolean; // Tolerância de até 3 dias com aviso amigável
+  isBlocked: boolean; // Bloqueio após 3 dias ou status ATRASADO/SUSPENSO
+  daysOverdue: number;
+  amount: number;
+  dueDate: Date | string | null;
+  message: string;
+}
+
 export interface GateStatus {
   currentStep: 1 | 2 | 3 | 4;
   isContractSigned: boolean;
@@ -34,6 +44,7 @@ export interface GateStatus {
   canAccessTickets: boolean;
   redirectTarget: string | null;
   statusLabel: string;
+  financialAlert: FinancialAlert | null;
 }
 
 export function getOnboardingGateStatus(
@@ -55,6 +66,7 @@ export function getOnboardingGateStatus(
       canAccessTickets: true,
       redirectTarget: null,
       statusLabel: "Acesso Total (Equipe VMASYS)",
+      financialAlert: null,
     };
   }
 
@@ -72,6 +84,7 @@ export function getOnboardingGateStatus(
       canAccessTickets: false,
       redirectTarget: "/portal/contrato",
       statusLabel: "Contrato Pendente",
+      financialAlert: null,
     };
   }
 
@@ -80,7 +93,7 @@ export function getOnboardingGateStatus(
     company.contract && company.contract.status === "SIGNED"
   );
 
-  // Trava 2: Confirmação do Primeiro Pagamento
+  // Trava 2: Confirmação do Primeiro Pagamento (Onboarding Inicial)
   const hasPaidInvoice = Boolean(
     company.invoices && company.invoices.some((i) => i.status === "PAID")
   );
@@ -97,8 +110,59 @@ export function getOnboardingGateStatus(
     company.briefing?.status === "SUBMITTED" || isBriefingApproved
   );
 
+  // Verificação de Inadimplência Contínua / Recorrência
+  let financialAlert: FinancialAlert | null = null;
+  const isExplicitDelinquent =
+    company.financialStatus === "ATRASADO" ||
+    company.financialStatus === "EM_ATRASO" ||
+    company.financialStatus === "SUSPENSO";
+
+  const now = new Date();
+  const unpaidInvoices = (company.invoices || []).filter(
+    (i) => i.status !== "PAID" && i.status !== "CANCELLED"
+  );
+
+  let oldestOverdueDays = 0;
+  let overdueInvoice: (typeof unpaidInvoices)[0] | null = null;
+
+  for (const inv of unpaidInvoices) {
+    const due = new Date(inv.dueDate);
+    const diffTime = now.getTime() - due.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays >= 0 || inv.status === "OVERDUE") {
+      const daysCount = Math.max(0, diffDays);
+      if (daysCount >= oldestOverdueDays) {
+        oldestOverdueDays = daysCount;
+        overdueInvoice = inv;
+      }
+    }
+  }
+
+  const hasAnyOverdue = Boolean(overdueInvoice || isExplicitDelinquent);
+  const GRACE_PERIOD_DAYS = 3;
+
+  if (hasAnyOverdue && isPaymentSettled) {
+    const isGracePeriod = !isExplicitDelinquent && oldestOverdueDays <= GRACE_PERIOD_DAYS;
+    const isBlocked = isExplicitDelinquent || oldestOverdueDays > GRACE_PERIOD_DAYS;
+
+    financialAlert = {
+      hasOverdue: true,
+      isGracePeriod,
+      isBlocked,
+      daysOverdue: oldestOverdueDays,
+      amount: overdueInvoice?.amount || 0,
+      dueDate: overdueInvoice?.dueDate || null,
+      message: isBlocked
+        ? `Sua mensalidade está em atraso há ${oldestOverdueDays} dia(s). A abertura de novos chamados e o atendimento estão temporariamente suspensos. Regularize seu pagamento para liberação imediata.`
+        : `Aviso de Vencimento: Sua fatura mensal venceu há ${oldestOverdueDays} dia(s). Você tem até 3 dias de tolerância antes da suspensão de novas solicitações.`,
+    };
+  }
+
   // Trava 4: Painel Totalmente Desbloqueado
   const isFullyUnlocked = isContractSigned && isPaymentSettled && isBriefingApproved;
+  const isTicketBlockedByFinance = Boolean(financialAlert?.isBlocked);
+  const canAccessTickets = isFullyUnlocked && !isTicketBlockedByFinance;
 
   let currentStep: 1 | 2 | 3 | 4 = 1;
   let redirectTarget: string | null = "/portal/contrato";
@@ -120,8 +184,12 @@ export function getOnboardingGateStatus(
       : "Passo 3: Preenchimento do Briefing";
   } else {
     currentStep = 4;
-    redirectTarget = null;
-    statusLabel = "Painel Liberado • Manutenção Ativa";
+    redirectTarget = isTicketBlockedByFinance ? "/portal/pagamento" : null;
+    statusLabel = isTicketBlockedByFinance
+      ? "Acesso Suspenso por Inadimplência"
+      : financialAlert?.isGracePeriod
+      ? "Mensalidade em Aberto (Carência de 3 Dias)"
+      : "Painel Liberado • Manutenção Ativa";
   }
 
   return {
@@ -134,8 +202,9 @@ export function getOnboardingGateStatus(
     canAccessContrato: true, // Sempre pode visualizar o contrato assinado
     canAccessPagamento: isContractSigned, // Pode acessar faturas após assinar
     canAccessBriefing: isContractSigned && isPaymentSettled, // Pode acessar briefing após pagar
-    canAccessTickets: isFullyUnlocked, // Só abre tickets após briefing aprovado
+    canAccessTickets, // Bloqueia tickets se inadimplente (> 3 dias) ou briefing pendente
     redirectTarget,
     statusLabel,
+    financialAlert,
   };
 }

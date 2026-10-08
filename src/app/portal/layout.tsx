@@ -17,6 +17,9 @@ import {
   CreditCard,
   Lock,
   CheckCircle2,
+  AlertTriangle,
+  AlertCircle,
+  ArrowRight,
 } from "lucide-react";
 
 export default async function PortalLayout({
@@ -344,6 +347,60 @@ export default async function PortalLayout({
 
       {/* Main Content Area */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Banner Financeiro: Aviso de Vencimento (Carência) ou Bloqueio por Inadimplência */}
+        {gate.financialAlert && (
+          <div
+            className={`mb-6 p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs ${
+              gate.financialAlert.isBlocked
+                ? "bg-red-50 border-red-200 text-red-900"
+                : "bg-amber-50 border-amber-200 text-amber-900"
+            }`}
+          >
+            <div className="flex items-start space-x-3">
+              <div
+                className={`p-2 rounded-xl mt-0.5 shrink-0 ${
+                  gate.financialAlert.isBlocked
+                    ? "bg-red-100 text-red-700"
+                    : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {gate.financialAlert.isBlocked ? (
+                  <AlertCircle className="w-5 h-5" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <p className="font-bold text-sm">
+                  {gate.financialAlert.isBlocked
+                    ? "Acesso Suspenso por Inadimplência"
+                    : "Aviso de Vencimento da Mensalidade"}
+                </p>
+                <p className="text-xs opacity-90 mt-0.5 max-w-2xl">
+                  {gate.financialAlert.message}
+                </p>
+              </div>
+            </div>
+
+            <Link
+              href="/portal/pagamento"
+              className={`inline-flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-bold shrink-0 transition-colors shadow-xs ${
+                gate.financialAlert.isBlocked
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-amber-600 hover:bg-amber-700 text-white"
+              }`}
+            >
+              <CreditCard className="w-4 h-4" />
+              <span>
+                {gate.financialAlert.isBlocked
+                  ? "Regularizar Pagamento"
+                  : "Pagar Fatura"}
+              </span>
+              <ArrowRight className="w-3.5 h-3.5 ml-1" />
+            </Link>
+          </div>
+        )}
+
         {children}
       </main>
 

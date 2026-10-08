@@ -7,6 +7,7 @@ import { validateTenantAccess } from "@/lib/tenant";
 import { saveUploadedFile } from "@/lib/file-storage";
 import { sendNotificationEmail } from "@/lib/email";
 import { revalidatePath } from "next/cache";
+import { getOnboardingGateStatus } from "@/lib/onboarding-gate";
 
 const CreateTicketSchema = z.object({
   siteId: z.string().min(1, "Selecione o site"),
@@ -56,6 +57,22 @@ export async function createTicketAction(formData: FormData) {
   const validated = CreateTicketSchema.safeParse(raw);
   if (!validated.success) {
     return { error: validated.error.errors[0]?.message || "Dados inválidos." };
+  }
+
+  // Valida permissão de abertura de chamados (Onboarding e Inadimplência)
+  if (session.role === "CLIENT") {
+    const company = await prisma.company.findUnique({
+      where: { id: companyId },
+      include: { contract: true, briefing: true, invoices: true },
+    });
+    const gate = getOnboardingGateStatus(company as any, session.role);
+    if (!gate.canAccessTickets) {
+      return {
+        error:
+          gate.financialAlert?.message ||
+          "Abertura de chamados suspensa por pendência financeira. Regularize seu pagamento para reativar o atendimento.",
+      };
+    }
   }
 
   // Valida que o site realmente pertence a esta empresa
