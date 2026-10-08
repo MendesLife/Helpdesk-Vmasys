@@ -15,6 +15,8 @@ export default async function CompanyDetailPage({ params }: Props) {
       include: {
         plan: true,
         briefing: true,
+        contract: true,
+        invoices: { orderBy: { createdAt: "desc" } },
         sites: { orderBy: { isPrimary: "desc" } },
         users: { orderBy: { createdAt: "asc" } },
         memberships: {

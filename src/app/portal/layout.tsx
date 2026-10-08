@@ -12,6 +12,7 @@ import {
   LogOut,
   ExternalLink,
   FileText,
+  Scale,
 } from "lucide-react";
 
 export default async function PortalLayout({
@@ -103,6 +104,14 @@ export default async function PortalLayout({
                 </Link>
 
                 <Link
+                  href="/portal/contrato"
+                  className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
+                >
+                  <Scale className="w-4 h-4 text-slate-400" />
+                  <span>Contrato</span>
+                </Link>
+
+                <Link
                   href="/portal/solicitacoes"
                   className="px-3 py-2 rounded-lg text-sm font-medium text-slate-600 hover:text-sky-700 hover:bg-sky-50/60 flex items-center space-x-1.5 transition-colors"
                 >
@@ -160,6 +169,13 @@ export default async function PortalLayout({
           >
             <FileText className="w-4 h-4 mb-0.5" />
             <span>Briefing</span>
+          </Link>
+          <Link
+            href="/portal/contrato"
+            className="flex flex-col items-center py-1 text-slate-600 hover:text-sky-600"
+          >
+            <Scale className="w-4 h-4 mb-0.5" />
+            <span>Contrato</span>
           </Link>
           <Link
             href="/portal/solicitacoes"

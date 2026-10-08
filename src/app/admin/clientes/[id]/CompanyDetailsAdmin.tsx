@@ -17,6 +17,17 @@ import {
   updateOnboardingStageAction,
   reviewBriefingAction,
 } from "@/app/actions/briefing";
+import {
+  updateContractTermsAction,
+  resetContractAction,
+} from "@/app/actions/contract";
+import {
+  createInvoiceAction,
+  markInvoiceAsPaidAction,
+  deleteInvoiceAction,
+  createStripeCheckoutAction,
+} from "@/app/actions/billing";
+import { generateDefaultContractTerms } from "@/lib/contract-template";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -53,6 +64,11 @@ import {
   FolderArchive,
   Sparkles,
   Layers,
+  Receipt,
+  FileCheck,
+  Printer,
+  Eye,
+  RefreshCw,
 } from "lucide-react";
 
 export default function CompanyDetailsAdmin({
@@ -123,6 +139,39 @@ export default function CompanyDetailsAdmin({
   const [showRevisionModal, setShowRevisionModal] = useState(false);
   const [briefingCopied, setBriefingCopied] = useState(false);
 
+  // Contract State
+  const [showContractEditModal, setShowContractEditModal] = useState(false);
+  const [showContractPreviewModal, setShowContractPreviewModal] = useState(false);
+  const [contractTerms, setContractTerms] = useState(
+    company.contract?.termsContent || generateDefaultContractTerms(company)
+  );
+  const [contractCopied, setContractCopied] = useState(false);
+
+  // Invoice State
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceAmount, setInvoiceAmount] = useState(
+    company.customPrice
+      ? company.customPrice.toFixed(2)
+      : company.plan?.price
+      ? company.plan.price.toFixed(2)
+      : ""
+  );
+  const [invoiceDueDate, setInvoiceDueDate] = useState(() => {
+    const d = new Date();
+    d.setDate(company.billingDay || 10);
+    if (d < new Date()) {
+      d.setMonth(d.getMonth() + 1);
+    }
+    return d.toISOString().split("T")[0];
+  });
+  const [invoicePaymentMethod, setInvoicePaymentMethod] = useState(
+    company.paymentMethod || "PIX"
+  );
+  const [invoiceUrl, setInvoiceUrl] = useState("");
+  const [invoiceStatus, setInvoiceStatus] = useState("PENDING");
+  const [invoiceError, setInvoiceError] = useState<string | null>(null);
+  const [loadingInvoiceId, setLoadingInvoiceId] = useState<string | null>(null);
+
   // Feedback State
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
 
@@ -160,6 +209,116 @@ export default function CompanyDetailsAdmin({
         router.refresh();
       } else if (res?.error) {
         alert(res.error);
+      }
+    });
+  };
+
+  const handleSaveContractTerms = (e: React.FormEvent) => {
+    e.preventDefault();
+    startTransition(async () => {
+      const res = await updateContractTermsAction(company.id, contractTerms);
+      if (res.success) {
+        setActionFeedback("Minuta do contrato atualizada com sucesso!");
+        setShowContractEditModal(false);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else {
+        alert(res.error || "Erro ao salvar minuta do contrato.");
+      }
+    });
+  };
+
+  const handleResetContract = () => {
+    if (
+      !confirm(
+        "Tem certeza que deseja reabrir o contrato para nova assinatura? O aceite anterior será desfeito e o cliente precisará assinar novamente."
+      )
+    ) {
+      return;
+    }
+
+    startTransition(async () => {
+      const res = await resetContractAction(company.id);
+      if (res.success) {
+        setActionFeedback("Contrato reaberto para nova assinatura!");
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else {
+        alert(res.error || "Erro ao reabrir contrato.");
+      }
+    });
+  };
+
+  const handleCreateInvoice = (e: React.FormEvent) => {
+    e.preventDefault();
+    setInvoiceError(null);
+    const fd = new FormData();
+    fd.append("companyId", company.id);
+    fd.append("amount", invoiceAmount);
+    fd.append("dueDate", invoiceDueDate);
+    fd.append("paymentMethod", invoicePaymentMethod);
+    if (invoiceUrl.trim()) fd.append("hostedInvoiceUrl", invoiceUrl.trim());
+    fd.append("status", invoiceStatus);
+
+    startTransition(async () => {
+      const res = await createInvoiceAction(fd);
+      if (res.success) {
+        setShowInvoiceModal(false);
+        setInvoiceUrl("");
+        setActionFeedback("Fatura cadastrada com sucesso!");
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else {
+        setInvoiceError(res.error || "Erro ao gerar fatura.");
+      }
+    });
+  };
+
+  const handleMarkInvoicePaid = (invId: string) => {
+    if (
+      !confirm(
+        "Confirmar baixa manual desta fatura como PAGA? A empresa será atualizada para 'Em dia'."
+      )
+    ) {
+      return;
+    }
+    setLoadingInvoiceId(invId);
+    startTransition(async () => {
+      const res = await markInvoiceAsPaidAction(invId);
+      setLoadingInvoiceId(null);
+      if (res.success) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else {
+        alert(res.error || "Erro ao marcar fatura como paga.");
+      }
+    });
+  };
+
+  const handleDeleteInvoice = (invId: string) => {
+    if (!confirm("Tem certeza que deseja remover esta fatura?")) return;
+    setLoadingInvoiceId(invId);
+    startTransition(async () => {
+      const res = await deleteInvoiceAction(invId);
+      setLoadingInvoiceId(null);
+      if (res.success) {
+        setActionFeedback(res.message);
+        setTimeout(() => setActionFeedback(null), 3000);
+        router.refresh();
+      } else {
+        alert(res.error || "Erro ao excluir fatura.");
+      }
+    });
+  };
+
+  const handleStripeCheckout = (invId?: string) => {
+    startTransition(async () => {
+      const res = await createStripeCheckoutAction(company.id, invId);
+      if (res.success && res.checkoutUrl) {
+        window.open(res.checkoutUrl, "_blank");
+      } else {
+        alert(res.error || "Não foi possível gerar link Stripe.");
       }
     });
   };
@@ -651,6 +810,328 @@ export default function CompanyDetailsAdmin({
             <p className="text-slate-600 bg-slate-50 p-2.5 rounded-xl border border-slate-100 whitespace-pre-wrap">
               {company.notes}
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Bloco de Contrato de Prestação de Serviços & Assinatura Eletrônica */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-2">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+                company.contract?.status === "SIGNED"
+                  ? "bg-emerald-50 text-emerald-600"
+                  : "bg-amber-50 text-amber-600"
+              }`}
+            >
+              <FileCheck className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-bold text-slate-900">
+                  Contrato de Prestação de Serviços & Aceite Eletrônico
+                </h2>
+                {company.contract?.status === "SIGNED" ? (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded flex items-center gap-1">
+                    <CheckCircle className="w-3 h-3 text-emerald-600" />
+                    Assinado Eletronicamente
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-amber-600" />
+                    Pendente de Assinatura
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Minuta formal vinculada à assinatura e validade jurídica sob MP 2.200-2/2001
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center flex-wrap gap-2">
+            {/* Copiar Link do Contrato para WhatsApp */}
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/portal/contrato`;
+                navigator.clipboard.writeText(url);
+                setContractCopied(true);
+                setTimeout(() => setContractCopied(false), 2500);
+              }}
+              className="inline-flex items-center px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-semibold transition-colors"
+              title="Copie o link direto para o cliente assinar ou visualizar no portal"
+            >
+              {contractCopied ? (
+                <>
+                  <Check className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                  <span className="text-emerald-700">Link Copiado!</span>
+                </>
+              ) : (
+                <>
+                  <Copy className="w-3.5 h-3.5 mr-1 text-slate-500" />
+                  <span>Copiar Link do Contrato</span>
+                </>
+              )}
+            </button>
+
+            {/* Ver Contrato Completo / Imprimir */}
+            <button
+              type="button"
+              onClick={() => setShowContractPreviewModal(true)}
+              className="inline-flex items-center px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors"
+            >
+              <Eye className="w-3.5 h-3.5 mr-1 text-slate-500" />
+              <span>Ver Minuta / Imprimir</span>
+            </button>
+
+            {/* Ações dependendo de estar assinado ou não */}
+            {company.contract?.status === "SIGNED" ? (
+              <button
+                type="button"
+                disabled={isPending}
+                onClick={handleResetContract}
+                className="inline-flex items-center px-3 py-1.5 rounded-xl border border-rose-200 text-rose-700 bg-rose-50 hover:bg-rose-100 text-xs font-semibold transition-colors"
+                title="Reabrir contrato se os termos forem renegociados"
+              >
+                <RefreshCw className="w-3.5 h-3.5 mr-1 text-rose-500" />
+                <span>Reabrir Contrato</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setShowContractEditModal(true)}
+                className="inline-flex items-center px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold transition-colors shadow-xs"
+              >
+                <Pencil className="w-3.5 h-3.5 mr-1" />
+                <span>Editar Minuta</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Detalhes do Contrato */}
+        {company.contract?.status === "SIGNED" ? (
+          <div className="p-4 rounded-xl bg-emerald-50/60 border border-emerald-200/80 space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className="font-bold text-emerald-950 flex items-center text-xs">
+                <ShieldCheck className="w-4 h-4 mr-1 text-emerald-600" />
+                Certificado de Assinatura Eletrônica Válida
+              </span>
+              <span className="text-[11px] text-emerald-700 font-mono">
+                Autenticado via IP & E-mail do Cliente
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+              <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium">Responsável / Signatário:</span>
+                <span className="font-bold text-slate-800">{company.contract.signedByName || "N/A"}</span>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium">E-mail Cadastrado:</span>
+                <span className="font-bold text-slate-800 truncate block">{company.contract.signedByEmail || "N/A"}</span>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium">Data e Horário:</span>
+                <span className="font-bold text-slate-800">
+                  {company.contract.signedAt
+                    ? new Date(company.contract.signedAt).toLocaleString("pt-BR")
+                    : "N/A"}
+                </span>
+              </div>
+              <div className="bg-white p-2.5 rounded-lg border border-emerald-100 shadow-2xs">
+                <span className="text-[10px] text-slate-400 block font-medium">IP de Auditoria:</span>
+                <span className="font-mono font-bold text-indigo-700">{company.contract.signedByIp || "N/A"}</span>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="p-4 rounded-xl bg-amber-50/60 border border-amber-200/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+            <div className="space-y-1">
+              <p className="font-bold text-amber-900">
+                Aguardando assinatura digital por parte do cliente
+              </p>
+              <p className="text-amber-700 text-[11px]">
+                O cliente pode assinar acessando a aba <strong>Contrato</strong> no portal do cliente, ou você pode copiar o link e enviá-lo pelo WhatsApp/e-mail.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const url = `${window.location.origin}/portal/contrato`;
+                navigator.clipboard.writeText(url);
+                setContractCopied(true);
+                setTimeout(() => setContractCopied(false), 2500);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-colors"
+            >
+              {contractCopied ? "Link Copiado ✓" : "Copiar Link p/ WhatsApp"}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Bloco de Gestão Financeira & Faturas */}
+      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+              <Receipt className="w-4 h-4" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h2 className="text-sm font-bold text-slate-900">
+                  Gestão Financeira & Faturas
+                </h2>
+                {company.financialStatus === "EM_DIA" ? (
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                    Situação: Em Dia ✓
+                  </span>
+                ) : company.financialStatus === "EM_ATRASO" ? (
+                  <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded">
+                    Situação: Em Atraso ⚠️
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded">
+                    Situação: Pagamento Pendente
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Histórico de mensalidades, cobranças e integrações com Stripe/PIX
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <button
+              type="button"
+              onClick={() => handleStripeCheckout()}
+              className="inline-flex items-center px-3 py-1.5 rounded-xl border border-indigo-200 text-indigo-700 bg-indigo-50/70 hover:bg-indigo-100 text-xs font-semibold transition-colors"
+              title="Gerar link de pagamento direto no Stripe Checkout"
+            >
+              <CreditCard className="w-3.5 h-3.5 mr-1 text-indigo-600" />
+              <span>Checkout Stripe</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowInvoiceModal(true)}
+              className="inline-flex items-center px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-colors shadow-xs"
+            >
+              <PlusCircle className="w-3.5 h-3.5 mr-1" />
+              <span>Nova Fatura</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Lista de Faturas */}
+        {!company.invoices || company.invoices.length === 0 ? (
+          <div className="p-6 text-center rounded-xl bg-slate-50 border border-dashed border-slate-200 text-xs text-slate-500">
+            <Receipt className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <p className="font-semibold text-slate-700">Nenhuma fatura registrada ainda</p>
+            <p className="text-slate-400 mt-0.5">
+              Clique no botão "+ Nova Fatura" para registrar uma cobrança para este cliente.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs text-left">
+              <thead className="bg-slate-50 text-slate-500 border-b border-slate-100 font-semibold">
+                <tr>
+                  <th className="py-2.5 px-3">Vencimento</th>
+                  <th className="py-2.5 px-3">Valor</th>
+                  <th className="py-2.5 px-3">Forma</th>
+                  <th className="py-2.5 px-3">Status</th>
+                  <th className="py-2.5 px-3">Pagamento</th>
+                  <th className="py-2.5 px-3 text-right">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {company.invoices.map((inv: any) => {
+                  const isPaid = inv.status === "PAID";
+                  const isOverdue =
+                    !isPaid && new Date(inv.dueDate) < new Date();
+                  return (
+                    <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="py-2.5 px-3 font-medium text-slate-900">
+                        {new Date(inv.dueDate).toLocaleDateString("pt-BR")}
+                      </td>
+                      <td className="py-2.5 px-3 font-bold text-slate-800">
+                        R${" "}
+                        {inv.amount.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                        })}
+                      </td>
+                      <td className="py-2.5 px-3">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700">
+                          {inv.paymentMethod}
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3">
+                        {isPaid ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                            Paga ✓
+                          </span>
+                        ) : isOverdue ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                            Em Atraso
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">
+                            Pendente
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-500">
+                        {inv.paidAt
+                          ? new Date(inv.paidAt).toLocaleDateString("pt-BR")
+                          : "—"}
+                      </td>
+                      <td className="py-2.5 px-3 text-right">
+                        <div className="flex items-center justify-end space-x-2">
+                          {!isPaid && (
+                            <button
+                              type="button"
+                              disabled={loadingInvoiceId === inv.id || isPending}
+                              onClick={() => handleMarkInvoicePaid(inv.id)}
+                              className="px-2 py-1 rounded bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200 font-semibold text-[11px] transition-colors"
+                              title="Marcar como paga e atualizar situação do cliente"
+                            >
+                              Baixar
+                            </button>
+                          )}
+
+                          {inv.hostedInvoiceUrl && (
+                            <a
+                              href={inv.hostedInvoiceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1 rounded text-slate-400 hover:text-indigo-600 transition-colors"
+                              title="Abrir fatura externa / comprovante"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </a>
+                          )}
+
+                          <button
+                            type="button"
+                            disabled={loadingInvoiceId === inv.id || isPending}
+                            onClick={() => handleDeleteInvoice(inv.id)}
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                            title="Excluir fatura"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
@@ -1678,6 +2159,248 @@ export default function CompanyDetailsAdmin({
                 {isPending ? "Salvando..." : "Enviar Solicitação"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Edição de Termos Contratuais */}
+      {showContractEditModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-3xl w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Pencil className="w-4 h-4 text-indigo-600" />
+                <span>Personalizar Minuta do Contrato</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowContractEditModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600">
+              Você pode ajustar cláusulas específicas, valores ou prazos antes que o cliente assine no portal:
+            </p>
+
+            <form onSubmit={handleSaveContractTerms} className="flex-1 flex flex-col space-y-3 min-h-0">
+              <textarea
+                value={contractTerms}
+                onChange={(e) => setContractTerms(e.target.value)}
+                rows={16}
+                required
+                className="w-full flex-1 rounded-xl border border-slate-300 p-3 text-xs font-mono text-slate-800 leading-relaxed focus:outline-none focus:border-indigo-600 resize-none bg-slate-50"
+              />
+
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setContractTerms(generateDefaultContractTerms(company))}
+                  className="text-slate-500 hover:text-slate-700 underline font-medium"
+                >
+                  Restaurar Minuta Padrão
+                </button>
+
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowContractEditModal(false)}
+                    className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isPending}
+                    className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold disabled:opacity-50"
+                  >
+                    {isPending ? "Salvando..." : "Salvar Minuta"}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Pré-visualização / Impressão do Contrato */}
+      {showContractPreviewModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-4xl w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center space-x-2">
+                <FileCheck className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-base font-bold text-slate-900">
+                  Visualização do Contrato - {company.name}
+                </h3>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="inline-flex items-center px-3 py-1.5 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold"
+                >
+                  <Printer className="w-3.5 h-3.5 mr-1" />
+                  <span>Imprimir / PDF</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowContractPreviewModal(false)}
+                  className="text-slate-400 hover:text-slate-600 p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 leading-relaxed font-serif whitespace-pre-wrap">
+              {company.contract?.termsContent || contractTerms}
+            </div>
+
+            {company.contract?.status === "SIGNED" && (
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 flex items-center justify-between flex-wrap gap-2">
+                <span>
+                  <strong>Assinado Eletronicamente por:</strong> {company.contract.signedByName} ({company.contract.signedByEmail})
+                </span>
+                <span className="font-mono text-[11px]">
+                  IP: {company.contract.signedByIp} • {new Date(company.contract.signedAt).toLocaleString("pt-BR")}
+                </span>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowContractPreviewModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-800 text-white font-semibold text-xs hover:bg-slate-900"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Nova Fatura */}
+      {showInvoiceModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white max-w-md w-full rounded-2xl p-6 shadow-2xl border border-slate-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <Receipt className="w-4 h-4 text-emerald-600" />
+                <span>Gerar Nova Fatura</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowInvoiceModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {invoiceError && (
+              <div className="p-3 rounded-lg bg-rose-50 text-rose-700 text-xs">
+                {invoiceError}
+              </div>
+            )}
+
+            <form onSubmit={handleCreateInvoice} className="space-y-4 text-xs">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Valor (R$) *
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    required
+                    value={invoiceAmount}
+                    onChange={(e) => setInvoiceAmount(e.target.value)}
+                    placeholder="299,00"
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-emerald-600 font-bold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Vencimento *
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={invoiceDueDate}
+                    onChange={(e) => setInvoiceDueDate(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-emerald-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Forma de Cobrança
+                  </label>
+                  <select
+                    value={invoicePaymentMethod}
+                    onChange={(e) => setInvoicePaymentMethod(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-emerald-600 bg-white"
+                  >
+                    <option value="PIX">PIX</option>
+                    <option value="BOLETO">Boleto Bancário</option>
+                    <option value="STRIPE">Stripe / Cartão</option>
+                    <option value="TRANSFERENCIA">Transferência / TED</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">
+                    Status Inicial
+                  </label>
+                  <select
+                    value={invoiceStatus}
+                    onChange={(e) => setInvoiceStatus(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-emerald-600 bg-white font-semibold"
+                  >
+                    <option value="PENDING">Pendente</option>
+                    <option value="PAID">Já Paga (Dar baixa)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-semibold text-slate-700 mb-1">
+                  Link de Pagamento Externo (Opcional)
+                </label>
+                <input
+                  type="url"
+                  value={invoiceUrl}
+                  onChange={(e) => setInvoiceUrl(e.target.value)}
+                  placeholder="https://buy.stripe.com/... ou link de boleto"
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-slate-900 focus:outline-none focus:border-emerald-600"
+                />
+              </div>
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowInvoiceModal(false)}
+                  className="px-4 py-2 rounded-xl text-slate-600 hover:bg-slate-100 font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isPending}
+                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs disabled:opacity-50"
+                >
+                  {isPending ? "Cadastrando..." : "Cadastrar Fatura"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
