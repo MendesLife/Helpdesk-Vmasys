@@ -68,11 +68,13 @@ export async function signContractAction(formData: FormData) {
     // Garante que o texto definitivo do contrato está congelado
     const contractTerms = company.contract?.termsContent || generateDefaultContractTerms(company);
 
+    const signedDate = new Date();
+
     await prisma.contract.upsert({
       where: { companyId },
       update: {
         status: "SIGNED",
-        signedAt: new Date(),
+        signedAt: signedDate,
         signedByName: signerName,
         signedByEmail: session.email,
         signedByIp: ip,
@@ -81,13 +83,37 @@ export async function signContractAction(formData: FormData) {
       create: {
         companyId,
         status: "SIGNED",
-        signedAt: new Date(),
+        signedAt: signedDate,
         signedByName: signerName,
         signedByEmail: session.email,
         signedByIp: ip,
         termsContent: contractTerms,
       },
     });
+
+    // Vincula automaticamente a data de início da assinatura e o dia do vencimento mensal
+    const billingDay = signedDate.getDate();
+    await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        contractStartDate: signedDate,
+        billingDay,
+      },
+    });
+
+    // Ajusta o vencimento da 1ª fatura pendente para 3 dias a partir da assinatura
+    const pendingInvoice = await prisma.invoice.findFirst({
+      where: { companyId, status: "PENDING" },
+      orderBy: { createdAt: "asc" },
+    });
+    if (pendingInvoice) {
+      const dueDate = new Date(signedDate);
+      dueDate.setDate(dueDate.getDate() + 3);
+      await prisma.invoice.update({
+        where: { id: pendingInvoice.id },
+        data: { dueDate },
+      });
+    }
 
     revalidatePath("/portal/contrato");
     revalidatePath("/portal/dashboard");

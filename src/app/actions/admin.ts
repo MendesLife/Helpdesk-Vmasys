@@ -15,11 +15,12 @@ export async function createCompanyAction(formData: FormData) {
   const name = formData.get("name")?.toString().trim();
   const document = formData.get("document")?.toString().trim();
   const planId = formData.get("planId")?.toString();
+  const onboardingStage = formData.get("onboardingStage")?.toString() || "BRIEFING_PENDENTE";
   const notes = formData.get("notes")?.toString().trim();
   const siteName = formData.get("siteName")?.toString().trim() || "Site Principal";
   const domainUrl = formData.get("domainUrl")?.toString().trim();
 
-  // Dados Financeiros & Contrato
+  // Dados Financeiros & Contrato (definidos automaticamente na assinatura, ou manuais se informado)
   const contractStartDateRaw = formData.get("contractStartDate")?.toString();
   const contractStartDate = contractStartDateRaw ? new Date(contractStartDateRaw) : null;
   const billingDayRaw = formData.get("billingDay")?.toString();
@@ -27,7 +28,7 @@ export async function createCompanyAction(formData: FormData) {
   const customPriceRaw = formData.get("customPrice")?.toString().replace(",", ".");
   const customPrice = customPriceRaw ? parseFloat(customPriceRaw) : null;
   const paymentMethod = formData.get("paymentMethod")?.toString() || "PIX";
-  const financialStatus = formData.get("financialStatus")?.toString() || "EM_DIA";
+  const financialStatus = formData.get("financialStatus")?.toString() || (onboardingStage === "ATIVO_MANUTENCAO" ? "EM_DIA" : "PENDENTE");
 
   if (!name) return { error: "Nome da empresa é obrigatório." };
   if (!domainUrl) return { error: "URL do site principal é obrigatória." };
@@ -38,6 +39,7 @@ export async function createCompanyAction(formData: FormData) {
         name,
         document: document || null,
         planId: planId || null,
+        onboardingStage,
         notes: notes || null,
         contractStartDate,
         billingDay,
@@ -58,10 +60,11 @@ export async function createCompanyAction(formData: FormData) {
     // Se a empresa possui plano ou valor definido, gera a 1ª Fatura de ativação
     const initialPrice = company.customPrice || company.plan?.price || 0;
     if (initialPrice > 0) {
-      const now = new Date();
       const dueDate =
         company.contractStartDate ||
-        new Date(now.setDate(now.getDate() + 3));
+        new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+
+      const isPaid = company.financialStatus === "EM_DIA" || company.onboardingStage === "ATIVO_MANUTENCAO";
 
       await prisma.invoice.create({
         data: {
@@ -69,8 +72,8 @@ export async function createCompanyAction(formData: FormData) {
           amount: initialPrice,
           dueDate,
           paymentMethod: company.paymentMethod || "PIX",
-          status: company.financialStatus === "EM_DIA" ? "PAID" : "PENDING",
-          paidAt: company.financialStatus === "EM_DIA" ? new Date() : null,
+          status: isPaid ? "PAID" : "PENDING",
+          paidAt: isPaid ? new Date() : null,
         },
       });
     }

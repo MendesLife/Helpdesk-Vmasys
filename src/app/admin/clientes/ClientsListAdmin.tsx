@@ -30,6 +30,7 @@ import {
   Kanban,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 
 interface CompanyItem {
@@ -158,14 +159,9 @@ export default function ClientsListAdmin({
   const [siteName, setSiteName] = useState("Site Principal");
   const [domainUrl, setDomainUrl] = useState("");
   const [notes, setNotes] = useState("");
-  // Novos Campos Financeiros
-  const [contractStartDate, setContractStartDate] = useState(
-    new Date().toISOString().split("T")[0]
-  );
-  const [billingDay, setBillingDay] = useState("10");
+  // Campos Financeiros & Onboarding
   const [customPrice, setCustomPrice] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("PIX");
-  const [financialStatus, setFinancialStatus] = useState("EM_DIA");
+  const [paymentMethod, setPaymentMethod] = useState("CARTAO");
 
   // State - Editar
   const [editingCompany, setEditingCompany] = useState<CompanyItem | null>(null);
@@ -198,11 +194,14 @@ export default function ClientsListAdmin({
     formData.append("siteName", siteName);
     formData.append("domainUrl", domainUrl);
     formData.append("notes", notes);
-    formData.append("contractStartDate", contractStartDate);
-    formData.append("billingDay", billingDay);
+    formData.append("contractStartDate", "");
+    formData.append("billingDay", "");
     formData.append("customPrice", customPrice);
     formData.append("paymentMethod", paymentMethod);
-    formData.append("financialStatus", financialStatus);
+    formData.append(
+      "financialStatus",
+      createOnboardingStage === "ATIVO_MANUTENCAO" ? "EM_DIA" : "PENDENTE"
+    );
 
     startTransition(async () => {
       const res = await createCompanyAction(formData);
@@ -931,61 +930,53 @@ export default function ClientsListAdmin({
 
               <div>
                 <label className="block font-semibold text-slate-700 mb-1">
-                  Etapa Inicial do Projeto / Onboarding
+                  Fluxo Inicial / Onboarding do Cliente
                 </label>
                 <select
                   value={createOnboardingStage}
                   onChange={(e) => setCreateOnboardingStage(e.target.value)}
                   className="w-full rounded-xl border border-slate-300 py-2 px-3 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white"
                 >
-                  <option value="BRIEFING_PENDENTE">1. Briefing Pendente (Aguardando cliente preencher)</option>
-                  <option value="BRIEFING_EM_ANALISE">2. Briefing em Análise (Equipe analisando)</option>
-                  <option value="EM_DESENVOLVIMENTO">3. Em Desenvolvimento (Criação do site)</option>
-                  <option value="EM_HOMOLOGACAO">4. Em Homologação (Revisão final)</option>
-                  <option value="ATIVO_MANUTENCAO">5. No Ar / Manutenção Ativa (Site pronto)</option>
+                  <option value="BRIEFING_PENDENTE">
+                    Funil Padrão (Passo 1: Contrato ➔ 2: Pagamento ➔ 3: Briefing)
+                  </option>
+                  <option value="ATIVO_MANUTENCAO">
+                    Direto para Manutenção Ativa (Cliente Legado / Site já publicado)
+                  </option>
                 </select>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Novos clientes iniciam no funil de 4 etapas para assinatura do contrato e pagamento inicial.
+                </p>
               </div>
 
               {/* Seção Contratual & Financeira */}
-              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
-                <span className="font-bold text-slate-800 block text-xs flex items-center">
-                  <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-600" />
-                  Contrato & Condições de Pagamento
-                </span>
+              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold text-slate-800 text-xs flex items-center">
+                    <DollarSign className="w-3.5 h-3.5 mr-1 text-emerald-600" />
+                    Contrato & Condições de Pagamento
+                  </span>
+                  <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Sparkles className="w-3 h-3 text-emerald-600" />
+                    Ciclo Automático
+                  </span>
+                </div>
+
+                {/* Informativo dinâmico explicando a automatização */}
+                <div className="p-2.5 rounded-xl bg-sky-50 border border-sky-200/80 text-[11px] text-sky-900 flex items-start space-x-2">
+                  <Sparkles className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-semibold text-sky-950">Início e Vencimento Automáticos</p>
+                    <p className="text-sky-700 mt-0.5 leading-relaxed">
+                      O início da assinatura e o dia de vencimento mensal serão definidos automaticamente na data em que o cliente <strong>assinar o contrato digital</strong> e <strong>realizar o 1º pagamento</strong>.
+                    </p>
+                  </div>
+                </div>
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block font-medium text-slate-600 mb-1">
-                      Início da Assinatura
-                    </label>
-                    <input
-                      type="date"
-                      value={contractStartDate}
-                      onChange={(e) => setContractStartDate(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block font-medium text-slate-600 mb-1">
-                      Dia de Vencimento
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={31}
-                      value={billingDay}
-                      onChange={(e) => setBillingDay(e.target.value)}
-                      placeholder="10"
-                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <div>
-                    <label className="block font-medium text-slate-600 mb-1">
-                      Mensalidade Customizada
+                      Mensalidade Negociada R$ (Opcional)
                     </label>
                     <input
                       type="text"
@@ -994,37 +985,23 @@ export default function ClientsListAdmin({
                       placeholder="Padrão do plano"
                       className="w-full rounded-xl border border-slate-300 py-1.5 px-2.5 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
                     />
+                    <p className="text-[10px] text-slate-400 mt-0.5">
+                      Preencha apenas se acordou valor diferente do plano
+                    </p>
                   </div>
 
                   <div>
                     <label className="block font-medium text-slate-600 mb-1">
-                      Forma de Cobrança
+                      Forma de Cobrança Inicial
                     </label>
                     <select
                       value={paymentMethod}
                       onChange={(e) => setPaymentMethod(e.target.value)}
                       className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
                     >
+                      <option value="CARTAO">Cartão / Stripe (Assinatura Recorrente)</option>
                       <option value="PIX">PIX</option>
                       <option value="BOLETO">Boleto Bancário</option>
-                      <option value="CARTAO">Cartão de Crédito</option>
-                      <option value="TRANSFERENCIA">Transferência</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block font-medium text-slate-600 mb-1">
-                      Situação Financeira
-                    </label>
-                    <select
-                      value={financialStatus}
-                      onChange={(e) => setFinancialStatus(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 py-1.5 px-2 text-slate-900 focus:outline-none focus:border-indigo-600 bg-white text-xs"
-                    >
-                      <option value="EM_DIA">Em Dia</option>
-                      <option value="PENDENTE">Pendente</option>
-                      <option value="ATRASADO">Em Atraso</option>
-                      <option value="ISENTO">Isento</option>
                     </select>
                   </div>
                 </div>
